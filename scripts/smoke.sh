@@ -1546,6 +1546,13 @@ check "and the reason says why" yes \
 	"$(err "$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/omci?cmd=tables")" 'wedges the MIB service')"
 check "an allowlisted dump is read" yes \
 	"$(err "$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/omci?cmd=dump&what=srvflow")" 'ARGV: dump srvflow')"
+# `omcicli state` is a verb of the odi-oss omcid; this container has no
+# /proc/odi_gpon/status, as a stock slot has none, so it is refused before
+# anything runs, and the link check leaves the stages that need it unknown.
+check "state is refused without the odi-oss driver" 400 \
+	"$(code -u "$AUTH" "http://127.0.0.1:$PORT/api/omci?cmd=state")"
+check "and says why" yes \
+	"$(err "$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/omci?cmd=state")" 'needs the odi-oss omcid')"
 
 for bad in 'cmd=me&me=84;reboot' 'cmd=me&me=../../etc/passwd' 'cmd=me&me=-rf' \
            'cmd=me&me=84%20171' 'cmd=me' 'cmd=dump&what=conn;id' 'cmd=dump' \

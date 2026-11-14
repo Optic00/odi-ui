@@ -652,6 +652,106 @@ ok(!logbox.children[2].classList.contains('warn'), 'and a later <6> resets it');
 ok(!/^<\d>/.test(logbox.children[0].textContent), 'the priority prefix is not shown');
 
 /* --- the switch MAC table ------------------------------------------------- */
+/*
+ * The link check (web/linkcheck.js): one finding per failed stage, each case
+ * the issue names told apart, and the tracker that turns polls into facts.
+ */
+{
+  const LC = await import(join(root, 'web', 'linkcheck.js'));
+  const base = { state: 'O5', los: false, rx: -18.2, onuId: 1, alloc: 3, o7Held: false, stalled: true,
+                 omci: { state: 'O5', mibSync: 184, resets: { olt: 1, local: 0, windowS: 600, recent: 0, loop: false } },
+                 gem: 6, traffic: { in: 1000, out: 500 }, idle: 0 };
+  const run = (over) => LC.linkCheck({ ...base, ...over });
+  const at = (r, k) => r.stages.find((x) => x.key === k).status;
+
+  let r = run({});
+  ok(r.finding.stage === null && r.finding.cls === 'good' && r.stages.every((x) => x.status === 'ok'),
+     'link check: a working line passes all five stages');
+  r = run({ los: true, state: 'O1' });
+  ok(r.finding.stage === 'light' && at(r, 'light') === 'fail' && at(r, 'registered') === 'wait',
+     'link check: LOS fails the light stage and stops there');
+  r = run({ state: 'O3', onuId: null, ranged: false });
+  ok(r.finding.stage === 'registered' && /does not know this serial/.test(r.finding.text)
+     && /no ONU-ID/.test(r.stages[1].evidence), 'link check: never ranged since the stall is an unknown serial');
+  r = run({ state: 'O2', onuId: null, ranged: true });
+  ok(/PLOAM password/.test(r.finding.text) && !/serial number \(GPON_SN\)/.test(r.finding.text),
+     'link check: ranged and dropped again is the password');
+  r = run({ state: 'O3', onuId: null, ranged: undefined });
+  ok(/serial number or PLOAM password/.test(r.finding.text), 'link check: not tracked says both');
+  r = run({ state: 'O4', onuId: 5 });
+  ok(/ranging does not complete/.test(r.finding.text) && /ONU-ID 5/.test(r.stages[1].evidence),
+     'link check: stuck in O4 is not called a credential fault');
+  r = run({ state: 'O3', onuId: null, stalled: false });
+  ok(r.finding.cls === 'warn' && at(r, 'registered') === 'wait', 'link check: not stalled yet is still registering');
+  r = run({ state: 'O7', o7Held: true });
+  ok(/disabled this ONU/.test(r.finding.text) && /kept/.test(r.stages[1].evidence), 'link check: O7 is the OLT disabling it');
+  r = run({ omci: { ...base.omci, resets: { olt: 5, local: 0, windowS: 600, recent: 4, loop: true } } });
+  ok(r.finding.stage === 'omci' && /MIB reset loop/.test(r.finding.text) && /4 MIB resets/.test(r.stages[2].evidence),
+     'link check: a MIB reset loop fails the OMCI stage');
+  r = run({ omci: { ...base.omci, resets: { olt: 5, local: 0, windowS: 600, recent: 1, loop: true } } });
+  ok(r.finding.stage === null && at(r, 'omci') === 'wait' && /clears after a quiet window/.test(r.stages[2].evidence),
+     'link check: a loop that has stopped is said, not failed');
+  r = run({ omci: { ...base.omci, mibSync: 0 }, gem: 0 });
+  ok(r.finding.stage === 'omci' && /has not provisioned anything/.test(r.finding.text), 'link check: registered and never provisioned');
+  r = run({ omci: { ...base.omci, mibSync: 0 }, gem: 0, stalled: false });
+  ok(r.finding.cls === 'warn' && at(r, 'omci') === 'wait', 'link check: early in O5 it waits for the provisioning');
+  r = run({ gem: 0 });
+  ok(r.finding.stage === 'services' && /no GEM port/.test(r.finding.text), 'link check: provisioned without a service');
+  r = run({ omci: null, gem: undefined });
+  ok(at(r, 'omci') === 'unknown' && at(r, 'services') === 'unknown' && r.finding.stage === null,
+     'link check: a stock image reports unknown, not a fault');
+  r = run({ traffic: { in: 0, out: 0 }, idle: 3 });
+  ok(r.finding.stage === 'traffic' && /nothing crosses/.test(r.finding.text), 'link check: services and no traffic');
+  r = run({ traffic: { in: 0, out: 0 }, idle: 1 });
+  ok(r.finding.cls === 'good' && at(r, 'traffic') === 'wait', 'link check: one quiet sample is not a fault');
+  r = run({ traffic: null });
+  ok(at(r, 'traffic') === 'wait' && /Measuring/.test(r.finding.text), 'link check: traffic needs two samples');
+  ok(LC.linkCheck(null).finding.text === 'No answer from the stick yet.', 'link check: no answer');
+
+  const st = `onu state  : O5
+mib sync   : 184
+programming: on
+rx dropped : length 0  devid 0  crc 0  (trailer odd, answered: 0)
+mib resets : olt 4  local 1  olt in last 600 s 3  loop yes  (loops 1)
+`;
+  const o = LC.omciState(st);
+  ok(o.state === 'O5' && o.mibSync === 184 && o.resets.olt === 4 && o.resets.local === 1
+     && o.resets.recent === 3 && o.resets.windowS === 600 && o.resets.loop === true, 'omcicli state: parsed');
+  ok(LC.omciState(st.replace(/^mib resets.*\n/m, '')).resets === null, 'omcicli state: an older omcid has no reset line');
+  ok(LC.omciState('') === null && LC.omciState('usage: omcicli ...') === null, 'omcicli state: no answer is null');
+  ok(LC.onuIdOf('-1') === null && LC.onuIdOf('7') === 7 && LC.onuIdOf(undefined) === undefined,
+     'onu_id: none, a number, not reported');
+  ok(LC.allocCount('5 282 794 1050 1306 538') === 5 && LC.allocCount(undefined) === null, 'alloc_ids: the count');
+  ok(LC.o7Held('keep 1 held 1') && !LC.o7Held('keep 1 held 0'), 'o7_hold: held');
+
+  const ports = (i, o) => ({ 2: { ifInOctets: String(i), ifOutOctets: String(o) } });
+  const facts = { state: 'O5', los: false, rx: -18 };
+  let t = LC.trackLink(null, { facts, st: { onu_id: '1' }, ports: ports(100, 100) });
+  ok(t.f.traffic === null && t.f.onuId === 1 && t.f.stalled === false, 'tracker: the first poll has no traffic yet');
+  t = LC.trackLink(t.T, { facts, st: {}, ports: ports(150, 120) });
+  ok(t.f.traffic.in === 50 && t.f.traffic.out === 20 && t.f.idle === 0, 'tracker: bytes between two polls');
+  t = LC.trackLink(t.T, { facts, st: {}, ports: ports(10, 10) });
+  ok(t.f.traffic === null, 'tracker: a counter reset is no sample');
+  let T = t.T;
+  for (let i = 0; i < 3; i++) T = LC.trackLink(T, { facts, st: {}, ports: ports(10, 10) }).T;
+  ok(T.idle === 3, 'tracker: quiet polls are counted');
+  T = null;
+  for (let i = 0; i < 4; i++) t = LC.trackLink(T, { facts: { state: 'O3', los: false, rx: -18 }, st: {}, ports: {} }), T = t.T;
+  ok(t.f.stalled === true && t.f.onuId === undefined && t.f.ranged === undefined,
+     'tracker: four polls before O5 are a stall; a stock image tracks no ranging');
+  const o3 = { state: 'O3', los: false, rx: -18 };
+  t = LC.trackLink(null, { facts: o3, st: { onu_id: '-1' }, ports: {} });
+  t = LC.trackLink(t.T, { facts: o3, st: { onu_id: '-1' }, ports: {} });
+  ok(t.f.ranged === false, 'tracker: no transition line and no ONU-ID is never ranged');
+  t = LC.trackLink(t.T, { facts: o3, st: { onu_id: '-1', o3_o4: '1' }, ports: {} });
+  ok(t.f.ranged === true, 'tracker: an O3 to O4 between two polls counts, though no poll saw it');
+  t = LC.trackLink(t.T, { facts: o3, st: { onu_id: '-1', o3_o4: '1' }, ports: {} });
+  ok(t.f.ranged === true, 'tracker: and is kept until the line is back in O5');
+  t = LC.trackLink(t.T, { facts: { ...o3, state: 'O5' }, st: { onu_id: '2', o3_o4: '2' }, ports: {} });
+  t = LC.trackLink(t.T, { facts: o3, st: { onu_id: '-1', o3_o4: '2' }, ports: {} });
+  ok(t.f.ranged === true, 'tracker: a drop out of O5 counts as having got that far');
+}
+
 const { parseL2 } = await import(join(root, 'web', 'l2.js'));
 const L2 = readFileSync(join(root, 'scripts/fixtures/l2-table.txt'), 'utf8');
 const l2rows = parseL2(L2);
@@ -2483,6 +2583,10 @@ ok(inputsOf('#sections') > 100,
   ok(/wrong serial number or PLOAM/.test(wz.liveHint(L('O3', '-18', false), 20).text),
      'live hint: stuck before O5 with light points at the serial and the PLOAM password');
   ok(!/wrong serial/.test(wz.liveHint(L('O3', '-18', false), 2).text), 'live hint: not yet, early in the registration');
+  ok(wz.liveHint(L('O5', '-18', false), 40, { gem: 0, o5Polls: 1 }).cls !== 'bad',
+     'live hint: reaching O5 late is not a missing service at once');
+  ok(wz.liveHint(L('O5', '-18', false), 40, { gem: 0, o5Polls: 12 }).cls === 'bad',
+     'live hint: but no service after the stall in O5 is');
 
   globalThis.fetch = keepFetch;
   S.VALUES = keepS.V; S.SETTINGS = keepS.SET; S.FW = keepS.FW;

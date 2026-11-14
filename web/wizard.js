@@ -39,6 +39,7 @@ import { withPairs, encode, applyOmci } from './save.js';
 import { renderAll } from './config.js';
 import { OPTICS, STATES, lineFacts } from './status.js';
 import { parseOmci } from './omci.js';
+import { linkCheck, onuIdOf } from './linkcheck.js';
 
 const MARKER = 'confd.setup';
 const SECRETS = ['GPON_PLOAM_PASSWD', 'LOID_PASSWD', 'LOID_PASSWD_OLD'];
@@ -649,19 +650,18 @@ async function savePassword(out) {
 
 /* ------------------------------------------------------------ live view */
 
-/* The line under the ladder for what the last reads said. Pure. */
-function liveHint(facts, polls) {
+/* The line under the ladder for what the last reads said: the finding of the
+   link check (linkcheck.js) for what the wizard reads. Pure. */
+function liveHint(facts, polls, more) {
   if (!facts) return { cls: 'warn', text: 'No answer from the stick yet.' };
-  if (facts.state === 'O5') return { cls: 'good', text: 'Operational. The line is registered.' };
-  if (facts.los) {
-    return { cls: 'bad', text: 'No light on the fibre (loss of signal). Check the fibre connector and that the cable '
-      + 'is in the right port: the stick cannot register without light.' };
+  const m = more || {};
+  /* In O5 the stall counts from reaching it: the provisioning starts there. */
+  const stall = facts.state === 'O5' && m.o5Polls !== undefined ? m.o5Polls : polls;
+  const r = linkCheck({ ...facts, stalled: stall >= STALL_POLLS, onuId: m.onuId, gem: m.gem });
+  if (r.finding.stage === 'registered' && r.finding.cls === 'warn') {
+    return { cls: 'warn', text: (facts.state ? (STATES[facts.state] || facts.state) + '. ' : '') + r.finding.text };
   }
-  if (polls >= STALL_POLLS) {
-    return { cls: 'warn', text: 'Still not operational. With light on the fibre, being stuck before O5 usually means '
-      + 'a wrong serial number or PLOAM password: go back and check them with your ISP.' };
-  }
-  return { cls: 'warn', text: (facts.state ? (STATES[facts.state] || facts.state) + '. ' : '') + 'Registering with the OLT…' };
+  return { cls: r.finding.cls, text: r.finding.text };
 }
 
 function paintLive() {
@@ -676,7 +676,7 @@ function paintLive() {
     if (i < n) li.classList.add('done');
     L.ol.append(li);
   }
-  const h = liveHint(L.facts, W.polls);
+  const h = liveHint(L.facts, W.polls, { onuId: L.onuId, gem: L.gem === null ? undefined : L.gem, o5Polls: L.o5Polls || 0 });
   L.hint.className = 'state-note ' + h.cls;
   L.hint.textContent = h.text;
   L.svc.textContent = L.gem === null ? '' : L.gem
@@ -691,6 +691,8 @@ async function pollLive() {
   try {
     const j = await (await wfetch('/api/status')).json();
     L.facts = j.error ? null : lineFacts(j.raw);
+    L.onuId = j.error ? undefined : onuIdOf(j.onu_id);
+    L.o5Polls = L.facts && L.facts.state === 'O5' ? (L.o5Polls || 0) + 1 : 0;
     if (L.facts && L.facts.state === 'O5') {
       const m = await (await wfetch('/api/omci?cmd=me&me=268')).json();
       L.gem = m.ok === false ? null : parseOmci(m.raw || '').instances.length;

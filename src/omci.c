@@ -201,7 +201,7 @@ void emit_omci_json(int fd, const char *query)
 	 * walks past into `out`, so a query with no `cmd` at all can leave the
 	 * last field's value sitting there. */
 	if (!form_get(query, "cmd", cmd, sizeof(cmd))) {
-		bad(fd, "cmd must be me, tables or dump");
+		bad(fd, "cmd must be me, state, tables or dump");
 		return;
 	}
 
@@ -244,8 +244,28 @@ void emit_omci_json(int fd, const char *query)
 		return;
 	}
 
+	/*
+	 * `omcicli state`: what omcid says of itself (ONU state, MIB data
+	 * sync, dropped frames, the MIB resets and whether they are a loop),
+	 * for the link check. odi-oss only: its omcid answers it from memory,
+	 * read-only; the stock omcicli has no such verb and nothing here should
+	 * find out what it does with one. /proc/odi_gpon/status is how this
+	 * daemon tells the two apart elsewhere too (status.c).
+	 */
+	if (seq(cmd, "state")) {
+		static char probe[64];
+
+		if (read_file(GPON_STATUS, probe, sizeof(probe)) <= 0) {
+			bad(fd, "state needs the odi-oss omcid");
+			return;
+		}
+		argv[0] = "omcicli"; argv[1] = "state"; argv[2] = 0;
+		emit_omcicli(fd, argv);
+		return;
+	}
+
 	if (!seq(cmd, "me")) {
-		bad(fd, "cmd must be me, tables or dump");
+		bad(fd, "cmd must be me, state, tables or dump");
 		return;
 	}
 

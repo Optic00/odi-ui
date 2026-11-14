@@ -212,6 +212,12 @@ static void emit_overview(int fd)
 	emit_line(fd, "mem_total", PROC_MEMINFO, "MemTotal:", buf, sizeof(buf));
 	emit_line(fd, "mem_avail", PROC_MEMINFO, "MemAvailable:", buf, sizeof(buf));
 	emit_line(fd, "onu_id", GPON_STATUS, "onu_id ", buf, sizeof(buf));
+	emit_line(fd, "alloc_ids", GPON_STATUS, "alloc_ids ", buf, sizeof(buf));
+	emit_line(fd, "o7_hold", GPON_STATUS, "o7_hold ", buf, sizeof(buf));
+	/* How often the ONU entered ranging (O3 to O4) since boot: the link
+	 * check tells an OLT that never answers the serial from one that ranges
+	 * the ONU and drops it, which a poll every 15 s would mostly miss. */
+	emit_line(fd, "o3_o4", GPON_STATUS, "onu_transitions O3 O4 ", buf, sizeof(buf));
 	emit_line(fd, "pon_id", GPON_STATUS, "pon_id ", buf, sizeof(buf));
 	emit_line(fd, "ranging", GPON_STATUS, "ranging_time ", buf, sizeof(buf));
 	emit_line(fd, "host_link", HOSTLINK_LINK, "", buf, sizeof(buf));

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Status: a link check under the registration ladder, stage by stage: light,
+  registered, OMCI with the OLT, services set up, traffic. Each stage shows
+  its evidence, and the first that fails gives one finding: no light; an OLT
+  that never ranges the stick since it stalled (the serial); one that ranges
+  it and drops it again (the PLOAM password), told apart by the driver's
+  O3 to O4 count, which catches the attempts a 15 s poll misses; ranging
+  that does not complete (O4); an O7 disable; a MIB reset loop; registered
+  and never provisioned; provisioned without a GEM port; services and no
+  byte on the fibre port. A
+  stage the image cannot report (the stock firmware) shows as unknown. The
+  setup wizard's live hint uses the same check. `web/linkcheck.js`, pure,
+  with its cases in `make check`. Refs #97.
+- API: `/api/omci?cmd=state` runs `omcicli state` on odi-oss (400 and nothing
+  run without /proc/odi_gpon/status), and `/api/status` adds `alloc_ids`,
+  `o7_hold` and `o3_o4` (the `onu_transitions O3 O4` count) from
+  /proc/odi_gpon/status. The MIB reset counts need an omcid
+  with the `mib resets` line (AndreZiviani/odi-oss#393).
 - Status: the transceiver bias current under Transceiver ("Bias current 14.1 mA", from the same
   diag run as the other readings, `pon get transceiver bias-current`), and how long the stick has
   been up under Stick ("Uptime 3 d 4 h 12 min", to the minute). The Stick block now shows on an

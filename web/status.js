@@ -542,4 +542,28 @@ function lineFacts(raw) {
   };
 }
 
-export { renderStatus, upFor, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };
+/*
+ * The link check under the ladder (linkcheck.js): one row per stage with its
+ * evidence, and the finding of the first stage that failed. r is linkCheck()'s
+ * answer, or null to hide it (an image that reports too little to check).
+ */
+const MARKS = { ok: '\u2713', fail: '\u2717', wait: '\u2026', unknown: '?' };
+function renderLinkCheck(r) {
+  const box = $('#linkcheck');
+  if (!box) return;
+  box.hidden = !r;
+  if (!r) return;
+  const ol = $('#lc-stages');
+  ol.textContent = '';
+  for (const s of r.stages) {
+    const li = el('li', s.status);
+    li.append(el('span', 'mark', MARKS[s.status] || ''), el('span', null, s.name), el('span', 'ev', s.evidence));
+    li.title = s.status === 'unknown' ? 'This image does not report what this stage needs.' : '';
+    ol.append(li);
+  }
+  const p = $('#lc-finding');
+  p.className = 'state-note ' + r.finding.cls;
+  p.textContent = r.finding.text;
+}
+
+export { renderStatus, renderLinkCheck, sections, upFor, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };

@@ -6,7 +6,7 @@
  * costs no C and no reflash.
  */
 
-import { $, el } from './dom.js';
+import { $, el, reconcile } from './dom.js';
 import { renderFlow } from './flow.js';
 import { renderOverview } from './overview.js';
 
@@ -535,38 +535,36 @@ function renderStatus(raw, chip, st) {
   const temp = num(s['pon get transceiver temperature'], /:\s*(-?\d+\.\d+)/);
   const volt = num(s['pon get transceiver voltage'], /:\s*(-?\d+\.\d+)/);
   const bias = num(s['pon get transceiver bias-current'], /:\s*(-?\d+\.\d+)/);
-  const env = $('#env');
-  env.textContent = '';
-  env.append(
+  const envRows = [
     ...stat('Temperature', temp === null ? '\u2014' : signed(Number(temp), 1) + ' \u00b0C', 'num'),
     ...stat('Supply', volt === null ? '\u2014' : Number(volt).toFixed(2) + ' V', 'num'),
     ...stat('Bias current', bias === null ? '\u2014' : Number(bias).toFixed(1) + ' mA', 'num'),
     ...stat('Alarms',
       !alarms.length ? '\u2014' : asserted.length ? asserted.length + ' asserted' : 'All clear',
       asserted.length ? 'bad' : (alarms.length ? 'ok' : '')),
-  );
+  ];
   /* The SoC is the stick, not the optics module, so it is not in the
      transceiver rows beside its alarms. */
   const up = upFor(st && st.uptime);
   $('#stickblock').hidden = !chip && up === null;
-  const stick = $('#stick');
-  stick.textContent = '';
-  if (up !== null) stick.append(...stat('Uptime', up, 'num'));
-  if (chip) stick.append(...stat('Chip temperature (SoC)', ...chipRow(chip)));
+  reconcile($('#stick'),
+    ...(up !== null ? stat('Uptime', up, 'num') : []),
+    ...(chip ? stat('Chip temperature (SoC)', ...chipRow(chip)) : []));
   chipBar(chip);
   if (asserted.length) {
-    env.append(el('dt', null, 'Asserted'),
+    envRows.push(el('dt', null, 'Asserted'),
       el('dd', 'bad', asserted.map((l) => l.replace(/\s*Alarm\s*:.*$/i, '').trim()).join(', ')));
   }
+  /* Laid over the rows on screen rather than rebuilt (reconcile in dom.js). */
+  reconcile($('#env'), ...envRows);
 
   /* The header pill: the two facts that say the line is up, on every view. */
   const pill = $('#linepill');
   pill.hidden = false;
-  pill.textContent = '';
   const ok = state === 'O5' && rx.verdict !== 'bad' && rx.verdict !== 'none';
   pill.className = 'linepill ' + (ok ? (rx.verdict === 'warn' ? 'warn' : 'ok') : 'bad');
-  pill.append(el('i', 'dot'), el('span', null, state || 'No state'));
-  if (rx.value !== null) pill.append(el('span', 'num', signed(rx.value, 1) + ' dBm'));
+  reconcile(pill, el('i', 'dot'), el('span', null, state || 'No state'),
+    ...(rx.value !== null ? [el('span', 'num', signed(rx.value, 1) + ' dBm')] : []));
   pill.title = ok ? 'Registered, receive level in window' : 'Not healthy: see Status';
 
   renderFlow(s['mib dump counter port all'] || '');
@@ -577,6 +575,56 @@ function renderStatus(raw, chip, st) {
     temp: temp === null ? null : Number(temp),
     st: { ...(st || {}), raw_counters: s['mib dump counter port all'] || '' },
   });
+}
+
+/*
+ * Figures that stopped arriving. The status poll asks every 15 s. With no
+ * good answer for two polls in a row the figures on screen are marked old
+ * rather than left in their colours: a stick that stopped answering otherwise
+ * keeps reading green, O5 and "In window" for as long as the tab is open,
+ * with "Failed to fetch" the only sign. data-stale on the root greys the
+ * Status view and the header pill and stops the fibre line (style.css), and
+ * one note says since when.
+ *
+ * The note is a role="status" region that stays in the page, empty while the
+ * figures are fresh (style.css hides it when empty), so a screen reader
+ * announces the text when it is set. It names a clock time rather than a
+ * running age, so it speaks once per outage, not on every check.
+ *
+ * The age is measured on a monotonic clock (`now`, performance.now() in the
+ * page), so a wall clock set back during an outage does not keep old figures
+ * green; the wall clock (`wall`) is only what the note prints. Before the
+ * first good answer nothing is on screen to mark.
+ */
+const STALE_MS = 35000;
+let LAST_OK = null;
+let LAST_WALL = 0;
+function paintStale(old) {
+  const root = document.documentElement.dataset;
+  const note = $('#stalenote');
+  if (!old) {
+    delete root.stale;
+    note.textContent = '';
+    return;
+  }
+  if (root.stale) return;
+  root.stale = '1';
+  const t = new Date(LAST_WALL).toLocaleTimeString();
+  note.textContent = `The stick has not answered the status poll since ${t}. `
+    + 'The Status figures are from then and stay grey until it answers again.';
+  $('#linepill').title = 'No answer to the status poll since ' + t;
+}
+/* A good /api/status answer was drawn at `now` (monotonic ms). */
+function markFresh(now, wall = Date.now()) {
+  LAST_OK = now;
+  LAST_WALL = wall;
+  paintStale(false);
+}
+/* Cheap, no request: true while the figures are old. */
+function checkStale(now) {
+  const old = LAST_OK !== null && now - LAST_OK > STALE_MS;
+  if (old) paintStale(true);
+  return old;
 }
 
 /*
@@ -627,4 +675,4 @@ function renderLinkCheck(r) {
   p.textContent = r.finding.text;
 }
 
-export { renderStatus, renderLinkCheck, renderPon, sections, upFor, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };
+export { markFresh, checkStale, STALE_MS, renderStatus, renderLinkCheck, renderPon, sections, upFor, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };

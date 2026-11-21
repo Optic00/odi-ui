@@ -9,7 +9,7 @@
 import { $, el, fail, get, oneAtATime, ask, once, wireTheme, wireHelp } from './dom.js';
 import { S, EDITS, pwGate } from './state.js';
 import { liveFibreRates } from './overview.js';
-import { renderStatus, renderLinkCheck, renderPon, sections, lineFacts } from './status.js';
+import { markFresh, checkStale, renderStatus, renderLinkCheck, renderPon, sections, lineFacts } from './status.js';
 import { parsePorts } from './flow.js';
 import { linkCheck, trackLink, omciState } from './linkcheck.js';
 import { parseOmci } from './omci.js';
@@ -445,6 +445,7 @@ const refresh = oneAtATime(async () => {
     const st = await get('/api/status', { timeout: POLL_READ_MS });
     if (st.error) throw new Error(st.error);
     renderStatus(st.raw, st.chip_temp, st);
+    markFresh(performance.now());
     await linkStatus(st);
     /* The setup wizard decides from the same read: open, mark, or leave alone. */
     wizardSeen(lineFacts(st.raw)).catch(fail);
@@ -554,5 +555,12 @@ let INIT_HOSTLINK = null;
   /* A scrape is three forks of ~35 ms each on a ~300 BogoMIPS core, so this is
      deliberately unhurried. */
   setInterval(refresh, 15000);
+  /* The age of the figures on screen, every 5 s and when the tab is shown
+     again: no request, so it also runs while a poll waits for its answer
+     (status.js, checkStale). Figures turn grey 35 to 40 s after the last
+     good answer. */
+  const stale = () => checkStale(performance.now());
+  setInterval(stale, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) stale(); });
   setInterval(ponTick, PON_MS);
 })();

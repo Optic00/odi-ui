@@ -186,7 +186,19 @@ main { padding: 24px 24px 120px; }
 #restore-out { overflow-x: auto; }
 .banner { margin: 16px 24px 0; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .banner p { margin: 0; flex: 1 1 320px; }
-#err { margin: 16px 24px 0; }
+#err, #stalenote { margin: 16px 24px 0; }
+/* Figures that stopped arriving (status.js): the Status view and the header
+   pill lose their verdict colours, so a stick that stopped answering does not
+   keep reading green. The note above says since when; it stays in the page
+   while empty, so a screen reader hears it when it is filled. */
+#stalenote:empty { margin: 0; padding: 0; border: 0; }
+[data-stale] #p-status, [data-stale] .linepill {
+  --green: var(--ink-3); --yellow: var(--ink-3); --red: var(--ink-3); --blue: var(--ink-3);
+  --green-ink: var(--ink-3); --yellow-ink: var(--ink-3); --red-ink: var(--ink-3); --blue-ink: var(--ink-3);
+}
+[data-stale] #p-status .num, [data-stale] #p-status .ov-val { color: var(--ink-3); }
+[data-stale] .ladder li.here { color: var(--bg); }
+[data-stale] .ov-glass.flowing { animation: none; }
 
 /* The update notice: the same band, in the accent colour, not the warning one. */
 .trial.update {
@@ -922,7 +934,7 @@ button.mib-row:focus-visible { outline-offset: -2px; }
   .tabs { order: 3; width: 100%; overflow-x: auto; }
   .tabs [role=tab] { padding: 10px 12px; }
   main { padding: 16px 16px 140px; }
-  .banner, #err { margin: 12px 16px 0; }
+  .banner, #err, #stalenote { margin: 12px 16px 0; }
   /* Stacked, in reading order: what it is, the control and its cost, then
      the details. The label column dissolves so its parts can be ordered. */
   .setting { display: flex; flex-direction: column; gap: 8px; }

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Status: figures that stopped arriving are marked old. 35 to 40 s after the
+  last good answer to the status poll, the Status view and the header pill
+  lose their green, yellow and red and turn grey, the fibre line stops, and a
+  note says since when the stick has not answered. Until now a stick that
+  stopped answering kept reading green, O5 and *In window*, with *Failed to
+  fetch* the only sign. The note is a live region that stays in the page while
+  empty and names a clock time, so a screen reader hears it once per outage.
+  The age runs on a monotonic clock. The next good answer clears it.
+
+- Status: a poll no longer rebuilds the stick overview, the transceiver and
+  stick rows and the header pill. `reconcile()` in `dom.js` lays the new
+  figures over the nodes on screen, so the keyboard focus stays on the part it
+  was on and a selected figure that did not change stays selected. `make
+  check` covers both changes; its DOM stub now keeps text as child nodes, as
+  a browser does.
+
 - Security: SECURITY.md sends reports to odi-oss private vulnerability
   reporting and covers the latest confd release and the one pinned by the
   latest odi-oss release. The release workflow pins every action to a commit

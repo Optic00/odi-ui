@@ -13,7 +13,7 @@
  * Clicking a part goes to the section that explains it.
  */
 
-import { $, el, bytes } from './dom.js';
+import { $, el, reconcile, bytes } from './dom.js';
 import { parsePorts } from './flow.js';
 import { serdesShort } from './hostlink.js';
 
@@ -108,16 +108,17 @@ function paintRates(r) {
   const rateText = (v) => (v === null || v === undefined ? 'measuring' : bytes(v) + '/s');
   const line = $('#overview .ov-glass');
   if (line) {
-    line.textContent = '';
-    if (r && r.down !== null && r.up !== null) {
-      line.append(el('span', 'ov-rate down', '\u2193 ' + bytes(r.down) + '/s'),
-        el('span', 'ov-rate up', '\u2191 ' + bytes(r.up) + '/s'));
-    }
+    reconcile(line, ...(r && r.down !== null && r.up !== null
+      ? [el('span', 'ov-rate down', '\u2193 ' + bytes(r.down) + '/s'),
+        el('span', 'ov-rate up', '\u2191 ' + bytes(r.up) + '/s')]
+      : []));
   }
   const vals = document.querySelectorAll('#overview .ov-switch .ov-val');
   if (vals.length >= 2 && r) {
-    vals[0].textContent = '\u2193 ' + rateText(r.down);
-    vals[1].textContent = '\u2191 ' + rateText(r.up);
+    /* Set only when it changed, so a selected figure that did not is kept. */
+    const set = (n, t) => { if (n.textContent !== t) n.textContent = t; };
+    set(vals[0], '\u2193 ' + rateText(r.down));
+    set(vals[1], '\u2191 ' + rateText(r.up));
   }
 }
 
@@ -133,6 +134,7 @@ function liveFibreRates(p) {
 function part(cls, name, lines, verdict, go) {
   const b = el('button', 'ov-part ' + cls);
   b.type = 'button';
+  b.dataset.k = cls;
   const head = el('span', 'ov-name');
   head.append(el('i', 'dot ' + (verdict || 'none')), document.createTextNode(name));
   b.append(head);
@@ -160,11 +162,11 @@ const goTo = (hash) => () => { location.hash = hash; };
 function renderOverview(f) {
   const host = $('#overview');
   if (!host) return;
-  host.textContent = '';
 
   const rxv = f.rx.value;
   const fibre = el('button', 'ov-fibre ov-part');
   fibre.type = 'button';
+  fibre.dataset.k = 'ov-fibre';
   const fhead = el('span', 'ov-name');
   fhead.append(el('i', 'dot ' + f.rx.verdict), document.createTextNode('Fibre'));
   const fval = el('span', 'ov-big');
@@ -243,7 +245,9 @@ function renderOverview(f) {
   }
   const pins = el('div', 'ov-line ov-pins');
   pins.setAttribute('aria-hidden', 'true');
-  host.append(fibre, fibreLine, stick, pins, router);
+  /* Built whole, then laid over what is on screen: only text and classes
+     change from one poll to the next (reconcile in dom.js). */
+  reconcile(host, fibre, fibreLine, stick, pins, router);
 }
 
 export { renderOverview, cpuBusy, liveFibreRates };

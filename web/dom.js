@@ -14,6 +14,35 @@ const el = (tag, cls, text) => {
   return n;
 };
 
+/*
+ * Give `host` the children `nodes`, keeping every node already there that is
+ * the same thing in the same place: same tag and same data-k (a part sets
+ * data-k when two siblings of one tag do different things on a click). A kept
+ * node takes over the class, `hidden` and title of the new one, the only
+ * attributes the renderers change between polls, and its text is updated in
+ * place. A poll that rebuilt the Status view every 15 s took the keyboard
+ * focus off the part it was on and cleared a text selection; this keeps both.
+ * Listeners stay those of the kept node, which is why data-k tells parts
+ * apart.
+ */
+function reconcile(host, ...nodes) {
+  const a = host.childNodes;
+  nodes.forEach((n, i) => {
+    const o = a[i];
+    if (!o) host.append(n);
+    else if (o.nodeType === 3 && n.nodeType === 3) {
+      if (o.textContent !== n.textContent) o.textContent = n.textContent;
+    } else if (o.nodeType === 1 && n.nodeType === 1 && o.tagName === n.tagName
+               && o.dataset.k === n.dataset.k) {
+      if (o.className !== n.className) o.className = n.className;
+      if (o.hidden !== n.hidden) o.hidden = n.hidden;
+      if (o.title !== n.title) o.title = n.title;
+      reconcile(o, ...n.childNodes);
+    } else o.replaceWith(n);
+  });
+  while (a.length > nodes.length) a[a.length - 1].remove();
+}
+
 function fail(e) {
   const box = $('#err');
   box.textContent = String(e && e.message ? e.message : e);
@@ -212,4 +241,4 @@ async function once(btn, fn) {
   return true;
 }
 
-export { $, el, fail, get, oneAtATime, bytes, ask, once, currentTheme, setTheme, wireTheme, createHelpToggle, setFullHelp, wireHelp, THEME_KEY, HELP_KEY };
+export { $, el, reconcile, fail, get, oneAtATime, bytes, ask, once, currentTheme, setTheme, wireTheme, createHelpToggle, setFullHelp, wireHelp, THEME_KEY, HELP_KEY };

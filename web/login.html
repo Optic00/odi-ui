@@ -48,6 +48,7 @@
       <li>Plug it in and leave it in. That boot is the safe mode.</li>
       <li>After a few minutes sign in here with <code>admin</code> / <code>admin</code>. The page
           opens at System › Access: set a new password there, acknowledge the safe-mode bar and
+          reboot. Do it within 30 minutes: a safe mode nobody acknowledges ends by itself with a
           reboot.</li>
     </ol>
     <p>Not sure which count applies? Do it three times first. If <code>admin</code> /
@@ -55,6 +56,10 @@
     <p>Each power-up has to end roughly 60 to 110 seconds after power-on. During the safe mode the
        fibre is off, so there is no internet through the stick. Besides its usual address it answers
        at <code>169.254.1.1</code>.</p>
+    <p>Only the power opens <code>admin</code> / <code>admin</code>. A safe mode the stick entered by
+       itself, after repeated resets, keeps the saved password. If the stick refuses every password,
+       the saved one included, its settings partition cannot be read: pull it, wait ten seconds and
+       plug it back in once.</p>
   </details>
 </main>
 <script type="module" src="/login.js"></script>

@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Safe mode: confd opens `admin` / `admin` only on a safe-mode boot that a
+  power cycle led into. odi-oss now writes `login=default` or `login=stored`
+  into `/var/run/safe-mode`; with `login=stored` (the stick entered the safe
+  mode by itself, after watchdog resets or with an unusable config
+  partition) the saved credential stays in force, a password saved then
+  applies at once, and the default-password warning behaves as on any boot.
+  With `login=stored` and `cause=config` a `confd.auth` that is absent,
+  empty or unreadable no longer falls back to the default: the partition is
+  what is missing, so every web login is refused until a power cycle makes
+  it `login=default`. An image that writes no `login=` field opens the
+  default on every safe-mode boot, as before; a `login=` field with any
+  value but `default` does not, lines may end in CR LF, and a flag that
+  fills the read buffer or cannot be read opens nothing. The safe-mode bar
+  says why the boot is a safe-mode boot, which passwords apply (root over
+  SSH apart when the image reports `root_password=failed`), and that it
+  reboots after 30 minutes (`exit_at=`) unless acknowledged, with no promise
+  about the boot after it; *Acknowledge* is offered for that even when
+  there is no record (an unusable config partition), the bar then says the
+  boot stays up, and it says so when the reboot has already begun
+  (`exit=exiting`). A past safe-mode boot after watchdog resets says so
+  instead of "short power cycles". The help under System › Access and
+  *Forgot your password?* say that only the power opens the default
+  password, that an unacknowledged safe mode ends after 30 minutes, and
+  what to do when every password is refused. `make check` and the smoke
+  test cover the flag lines.
 - Sign-in: a *Forgot your password?* section explains the odi-oss safe mode:
   five short power-ups, or three when the host port runs 2500BASE-X or
   HiSGMII or has auto-negotiation off, then sign in with `admin` / `admin`.

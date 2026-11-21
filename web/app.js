@@ -23,7 +23,7 @@ import { renderPhone, wirePhone, hideSecrets } from './phone.js';
 import { wireRestore, saveBackup } from './restore.js';
 import { renderL2 } from './l2.js';
 import { renderTools } from './tools.js';
-import { renderHostlink, wireHostlink, safeModeNow, passwordSavedText, hostlinkNow } from './hostlink.js';
+import { renderHostlink, wireHostlink, safeModeDefaultLogin, passwordSavedText, hostlinkNow } from './hostlink.js';
 import { renderNetaddr, wireNetaddr } from './netaddr.js';
 import { checkForUpdate, wireUpdates, renderUpdateSwitch } from './updates.js';
 import { passwordProblem, sshKeyProblem } from './validate.js';
@@ -103,9 +103,10 @@ let VIEW = 'status';
 let FOCUS_PASSWORD = false;
 function showAuth() {
   const loud = VIEW === 'status' || VIEW === 'system/access';
-  /* A safe-mode boot answers to the default whatever was saved, and its own
-     bar already says so and leads to the password: no second warning. */
-  const on = !!(S.FW && S.FW.defaultauth) && !safeModeNow();
+  /* A safe-mode boot on the default login answers to the default whatever
+     was saved, and its own bar already says so and leads to the password: no
+     second warning. One that kept the saved login is warned like any boot. */
+  const on = !!(S.FW && S.FW.defaultauth) && !safeModeDefaultLogin();
   $('#defaultauth').hidden = !on || !loud;
   $('#authchip').hidden = !on || loud;
 }
@@ -509,9 +510,10 @@ let INIT_HOSTLINK = null;
   /* The host-link banner, from what /api/init already brought. */
   await renderHostlink(INIT_HOSTLINK);
   showAuth();
-  /* Signed in on a safe-mode boot, most likely to replace a lost password:
-     open that form, unless the address already names a view. */
-  if (safeModeNow() && !location.hash.slice(1)) toPassword();
+  /* Signed in on a safe-mode boot with the default login, most likely to
+     replace a lost password: open that form, unless the address already
+     names a view. */
+  if (safeModeDefaultLogin() && !location.hash.slice(1)) toPassword();
   /* The address trial: whether the image has it (Save and Restore then go through it) and a trial that
      is already running, which raises its dialog. Before the form is used. */
   await renderNetaddr();

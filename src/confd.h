@@ -122,11 +122,20 @@
 #define VOIP_PORTS_MAX    2
 /*
  * The odi-oss safe mode (safe-mode.sh): a recovery boot, entered by a run of
- * short power-ups, with the PON off, the host port on auto-negotiation and
- * the default credentials in memory, for that boot only. The flag of the
- * boot (tmpfs) is what confd reads: present, the web UI accepts
- * DEFAULT_AUTH whatever confd.auth holds (http.c). The record above
- * (HOSTLINK_SAFEMODE) outlives the boot until acknowledged with the script.
+ * short power-ups, by watchdog resets in a row or by a config partition
+ * that cannot be used, with the PON off and the host port on
+ * auto-negotiation, for that boot only. Entered by a power cycle it also
+ * opens the default credentials, in memory. The flag of the boot (tmpfs,
+ * key=value lines) is what confd reads: present, and without a
+ * login=stored line, the web UI accepts DEFAULT_AUTH whatever confd.auth
+ * holds (http.c, safemode_login). With that line the saved credential
+ * stays in force, and with cause=config beside it a confd.auth that is not
+ * there refuses every login instead of falling back to the default. The
+ * flag also says when the boot reboots by itself (exit_at=, an uptime) and
+ * where that stands (exit=timed, held by an acknowledgement, exiting,
+ * failed); the page reads both from /api/hostlink. The record
+ * above (HOSTLINK_SAFEMODE) outlives the boot until acknowledged with the
+ * script, and the same ack holds a safe-mode boot that has no record.
  */
 #define SAFEMODE_FLAG     "/var/run/safe-mode"
 #define SAFEMODE_SCRIPT   "/etc/scripts/safe-mode.sh"

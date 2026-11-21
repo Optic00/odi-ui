@@ -88,9 +88,12 @@ ARIA tablists: arrow keys move between tabs, Home and End jump to the ends.
     itself after two minutes unless Keep arrives over the link being tried, in a dialog
     that counts the window down. A banner on every view says when the image runs
     auto-negotiation although the key is off: the boot fallback (clears at the next boot
-    that brings the forced link up), an odi-oss safe-mode boot (the fibre off, the default
-    password for that boot only: confd accepts `admin:admin` while `/var/run/safe-mode`
-    exists, without reading or touching `confd.auth`) and a past safe-mode boot not yet
+    that brings the forced link up), an odi-oss safe-mode boot (the fibre off, and after a
+    power cycle the default password for that boot only: confd accepts `admin:admin` while
+    `/var/run/safe-mode` exists and has no `login=stored` line, without reading or touching
+    `confd.auth`; with that line, which the image writes when the stick entered the safe
+    mode by itself, the saved credential stays in force, and with `cause=config` beside it
+    a missing `confd.auth` refuses every login instead of falling back to the default) and a past safe-mode boot not yet
     acknowledged (Acknowledge runs `safe-mode.sh ack`). A bar of its own says when the
     config store was recreated from the image defaults at boot (Acknowledge runs
     `config-reseed.sh ack`). Under it, the **link mode**
@@ -189,7 +192,11 @@ button; after 15 minutes the page stops asking.
 
 The same striped band carries four more states, because in each the image
 changed what runs without being asked, and none may go unseen: an odi-oss
-**safe-mode boot** (the fibre off, the default passwords for this boot only), a
+**safe-mode boot** (the fibre off; the default passwords for this boot only when a
+power cycle led into it, the saved ones when the stick entered it by itself after
+watchdog resets or with an unusable config partition, and the bar says which; it
+also says when the boot reboots by itself, which Acknowledge holds off, and
+promises nothing about the boot after it), a
 **safe-mode record** (a safe-mode boot happened and nobody has acknowledged it;
 it stays until someone does), a **recreated config store** (odi-oss
 `config-reseed.sh` found `lastgood.xml` or `lastgood_hs.xml` missing at boot,

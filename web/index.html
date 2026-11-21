@@ -526,12 +526,23 @@
           <summary>Locked out? The safe mode</summary>
           <p><strong>What it is.</strong> A recovery boot. For that one boot the fibre (PON) is off, so there is
              no internet through this stick and it does not disturb the line; the host port runs
-             auto-negotiation, and a setting that forced it off is cleared; this page accepts
-             <code>admin</code> / <code>admin</code> and root over SSH accepts the password
-             <code>admin</code>. The saved password and SSH keys are unchanged: they come back at the next boot.</p>
+             auto-negotiation, and a setting that forced it off is cleared. When you entered it with the
+             power (below), this page accepts <code>admin</code> / <code>admin</code> and root over SSH
+             accepts the password <code>admin</code>. The saved password and SSH keys are unchanged: they
+             come back at the next boot.</p>
+          <p><strong>When the stick enters it by itself.</strong> Three resets in a row by its watchdog, or a
+             settings partition that cannot be used, also end in the safe mode, so the stick stays reachable.
+             Nobody used the power then, so the default passwords stay closed: your saved password and SSH
+             keys still apply. With an unusable settings partition the saved password cannot be read, and
+             this page then refuses every sign-in until one power cycle (leave the stick off for ten
+             seconds) opens <code>admin</code> / <code>admin</code>. After watchdog resets use the
+             power-ups below.</p>
           <p><strong>How to leave it.</strong> If you lost your password, set a new one here (or add an SSH key):
              it is saved and takes effect from the next boot. Acknowledge the banner, then reboot. The next
-             boot uses the saved configuration again, with the fibre on.</p>
+             boot uses the saved configuration again, with the fibre on. A safe mode nobody acknowledges
+             ends by itself: the stick reboots after 30 minutes, so the fibre does not stay off on a stick
+             nobody is looking at. The reboot waits for a firmware write that is running. Acknowledge keeps
+             the safe mode up until you reboot.</p>
           <p><strong>How to enter it.</strong> Plug the stick in, wait about 80 seconds, pull it, wait a few
              seconds. Do that five times in a row (three times when the host port is set to 2500BASE-X or
              HiSGMII, or to auto-negotiation off), then plug it in and leave it in: that boot is the safe
@@ -540,7 +551,8 @@
              power-up has to end roughly 60 to 110 seconds after power-on (the stick spends about
              54 seconds before its kernel starts; that can vary by board).</p>
           <p><strong>The trade-off.</strong> Anyone who can power-cycle the stick can do this, and gets
-             the default password for that boot.</p>
+             the default password for that boot, for 30 minutes unless they acknowledge. A reset the stick
+             does to itself gives nobody the default password.</p>
         </details>
         <div id="pw-out"></div>
       </section>

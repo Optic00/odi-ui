@@ -550,11 +550,15 @@ const char *request_refusal(const char *r)
  * /etc/config/confd.auth when it has content, DEFAULT_AUTH otherwise. Returns
  * its length; sets *is_default when the fallback was used.
  *
- * On a safe-mode boot of odi-oss (SAFEMODE_FLAG) the file is not read at
- * all: the recovery boot accepts the default credential, in memory only,
- * so a forgotten password can be replaced. The file is left alone, and a
+ * On a safe-mode boot of odi-oss that opens the default credential
+ * (safemode_login() below, SM_DEFAULT) the file is not read at all: the
+ * recovery boot accepts the default credential, in memory only, so a
+ * forgotten password can be replaced. The file is left alone, and a
  * password saved meanwhile is written to it and in force from the next
- * boot.
+ * boot. A safe-mode boot that keeps the saved credential (login=stored) is
+ * a normal boot here, with one exception: when the config partition is why
+ * it is a safe-mode boot, a file that is absent or empty does not fall
+ * back to the default, and every login is refused (SM_STRICT).
  *
  * A file that exists but is empty counts as absent. That is not pedantry: the
  * obvious way to clear a password is to truncate the file, and treating the
@@ -571,9 +575,82 @@ const char *request_refusal(const char *r)
 /* ENOENT: 2 on MIPS o32 as everywhere (the low errno numbers are shared). */
 #define ENOENT_ 2
 
+/*
+ * What the safe-mode flag of this boot says about the web login.
+ *
+ * The flag is key=value lines. odi-oss writes login=default when the boot
+ * that entered the safe mode followed a power cycle (a person at the
+ * stick), and login=stored when the stick entered it by itself (watchdog
+ * resets, a config partition that would not mount): nobody asked for the
+ * password everybody knows then, so the saved one stays in force.
+ *
+ *   SM_NONE     no flag: not a safe-mode boot.
+ *   SM_DEFAULT  the default credential is open: a login=default line, or
+ *               no login= field at all in a flag that was read whole. The
+ *               second is an image whose safe-mode.sh predates the line and
+ *               opens the default on every safe-mode boot; confd and the
+ *               image are released apart, and read the other way round a
+ *               new confd on such an image would close the one way back
+ *               from a lost password.
+ *   SM_STORED   the saved credential stays in force, as on any boot: a
+ *               login=stored line, or a login= value this confd does not
+ *               know.
+ *   SM_STRICT   the saved credential or nothing. Either the flag says
+ *               login=stored with cause=config: the config partition could
+ *               not be used, so a confd.auth that is not there is a
+ *               partition that is not mounted, not an owner who never set a
+ *               password, and falling back to the default would open the
+ *               stick to whoever reaches the port with nobody at it. One
+ *               power cycle is the way in (login=default). Or the flag
+ *               could not be judged: a read error, or a read that filled
+ *               the buffer, which may have cut the line that matters. An
+ *               image that writes the flag in one rename never shows half
+ *               of one, so this is damage, and damage opens nothing.
+ *
+ * A line may end in CR LF. login=stored anywhere wins over login=default.
+ */
+enum { SM_NONE, SM_DEFAULT, SM_STORED, SM_STRICT };
+
+static int safemode_login(void)
+{
+	char flag[1024];
+	long got = read_file(SAFEMODE_FLAG, flag, sizeof(flag));
+	const char *p = flag;
+	int field = 0, stored = 0, config = 0;
+
+	if (got == -ENOENT_)
+		return SM_NONE;
+	if (got < 0 || (unsigned long)got >= sizeof(flag) - 1)
+		return SM_STRICT;
+	while (*p) {
+		const char *e = p;
+		unsigned long n;
+
+		while (*e && *e != '\n')
+			e++;
+		n = (unsigned long)(e - p);
+		if (n && p[n - 1] == '\r')
+			n--;
+		if (spre(p, "login=")) {
+			field = 1;
+			if (!(n == 13 && spre(p, "login=default")))
+				stored = 1;
+		} else if (n == 12 && spre(p, "cause=config")) {
+			config = 1;
+		}
+		p = *e ? e + 1 : e;
+	}
+	if (!field)
+		return SM_DEFAULT;
+	if (!stored)
+		return SM_DEFAULT;
+	return config ? SM_STRICT : SM_STORED;
+}
+
 static long load_credential(int *is_default)
 {
-	long want = file_exists(SAFEMODE_FLAG) ? 0 : read_file(AUTH_PATH, credbuf, sizeof(credbuf));
+	int sm = safemode_login();
+	long want = sm == SM_DEFAULT ? 0 : read_file(AUTH_PATH, credbuf, sizeof(credbuf));
 	unsigned long k;
 
 	if (want > 0) {
@@ -586,6 +663,10 @@ static long load_credential(int *is_default)
 			*is_default = 0;
 		return want;
 	}
+	/* Absent or empty falls back to the default, except where the safe
+	 * mode says a missing file is a missing partition (SM_STRICT). */
+	if (sm == SM_STRICT)
+		return -1;
 	if (want < 0 && want != -ENOENT_)
 		return -1;
 
@@ -670,7 +751,7 @@ int set_credential(const char *user, const char *pass, const char **why)
 	 * The same credential saved again is not written again: a button
 	 * pressed twice, or a page that resends, costs the flash nothing. The
 	 * file is compared as it is on flash, not with load_credential(), which
-	 * answers the default on a safe-mode boot. A file with other modes
+	 * answers the default on a safe-mode boot that opens it. A file with other modes
 	 * than 0600 is written, so a save still makes it private.
 	 */
 	{

@@ -2171,7 +2171,8 @@ void serve(int conn)
 			} else if (seq(action, "confirm") || seq(action, "revert")) {
 				argv[1] = action;
 			} else if (seq(action, "ack")) {
-				/* The safe-mode record belongs to safe-mode.sh. */
+				/* The safe-mode record belongs to safe-mode.sh; its ack
+				 * also holds a safe-mode boot that would end by itself. */
 				script = SAFEMODE_SCRIPT;
 				argv[0] = "safe-mode.sh";
 				argv[1] = action;

@@ -1277,7 +1277,7 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
 
 /* --- the host-link banner and the Host port control ------------------------- */
 {
-  const { bannerText, trialLeft, renderHostlink, wireHostlink, safeModeNow, passwordSavedText } = await import(join(root, 'web', 'hostlink.js'));
+  const { bannerText, trialLeft, renderHostlink, wireHostlink, safeModeNow, safeModeDefaultLogin, passwordSavedText } = await import(join(root, 'web', 'hostlink.js'));
   const keep = API['/api/hostlink'];
   const st = (o) => ({ setting: 'on', running: 'on', phase: 'steady', fallback: '0', ...o });
 
@@ -1304,6 +1304,53 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
      'safe mode: acknowledged during the boot, the bar stays without the button and says the next boot is normal');
   b = bannerText({ supported: false, state: {}, safemode_now: { short_boots: '5' }, safemode: {} });
   ok(b.show, 'safe mode: shown even on an image without host-autoneg.sh');
+  /* The login and the timed exit, per cause, as odi-oss writes the flag. */
+  {
+    const wd = { cause: 'watchdog', short_boots: '0', wdt_resets: '3', cleared: 'none', prev: 'wdt_userland',
+                 login: 'stored', root_password: 'stored', exit_at: '1800', exit: 'timed' };
+    b = bannerText({ supported: true, state: st({}), safemode_now: wd, safemode: wd, uptime: '200' });
+    ok(/^Safe mode\./.test(b.safe) && /entered by itself after repeated resets/.test(b.safe) && /PON\) is off/.test(b.safe)
+       && /saved password and SSH keys still apply/.test(b.safe) && !/default password/.test(b.safe),
+       'safe mode: after watchdog resets the bar says the stick entered it by itself and the saved login applies, not the default');
+    ok(b.ack && /It reboots after 30 minutes unless acknowledged\./.test(b.safe) && !/normal boot/.test(b.safe),
+       'safe mode: a timed safe mode says when it reboots, promises no kind of next boot, and offers Acknowledge');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...wd, exit: 'held' }, safemode: null, uptime: '200' });
+    ok(!b.ack && /Acknowledged: it stays up until you reboot\.$/.test(b.safe) && !/unless acknowledged/.test(b.safe)
+       && !/normal boot/.test(b.safe),
+       'safe mode: acknowledged, the bar says it stays up and has no button');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...wd, exit: 'exiting' }, safemode: wd, uptime: '1801' });
+    ok(/it is rebooting now/.test(b.safe) && !/unless acknowledged/.test(b.safe),
+       'safe mode: once the timed exit has begun the bar says the stick is rebooting, not that an Acknowledge would stop it');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...wd, exit: 'failed' }, safemode: null, uptime: '1900' });
+    ok(!b.ack && !/Acknowledged|reboots|rebooting/.test(b.safe),
+       'safe mode: a timed exit whose reboot failed claims neither a reboot nor an acknowledgement');
+    const cf = { cause: 'config', short_boots: '0', wdt_resets: '0', cleared: 'none', prev: 'wdt_userland',
+                 login: 'stored', root_password: 'stored', exit_at: '1800', exit: 'timed' };
+    b = bannerText({ supported: true, state: st({}), safemode_now: cf, safemode: null, uptime: '200' });
+    ok(b.ack && /settings partition cannot be used/.test(b.safe) && /saved password/.test(b.safe)
+       && !/Acknowledged/.test(b.safe),
+       'safe mode: a dead config partition has no record, and still offers Acknowledge while the exit is due');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...cf, prev: 'power', login: 'default', root_password: 'default' },
+                     safemode: null, uptime: '200' });
+    ok(/default passwords work for this boot only/.test(b.safe) && /settings partition/.test(b.safe),
+       'safe mode: a dead config partition after a power cycle says the default passwords work');
+    const sb = { cause: 'short_boots', short_boots: '5', wdt_resets: '0', cleared: 'none', prev: 'power',
+                 login: 'default', root_password: 'default', exit_at: '1800', exit: 'timed' };
+    b = bannerText({ supported: true, state: st({}), safemode_now: sb, safemode: sb, uptime: '200' });
+    ok(/A recovery boot: the fibre/.test(b.safe) && /default passwords work for this boot only/.test(b.safe)
+       && /reboots after 30 minutes unless acknowledged/.test(b.safe) && b.ack && b.safe.length < 240,
+       'safe mode: after short power cycles the default passwords, the exit time, one line');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, exit_at: 'soon' }, safemode: sb });
+    ok(/It reboots by itself unless acknowledged\./.test(b.safe),
+       'safe mode: an exit time that is not a number is left out, the exit is still said');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, root_password: 'failed' }, safemode: sb });
+    ok(/this page accepts the default password for this boot only; root over SSH does not/.test(b.safe)
+       && !/default passwords work/.test(b.safe),
+       'safe mode: root_password=failed is said apart: the page on the default, root over SSH not');
+    b = bannerText({ supported: true, state: st({}), safemode_now: null, safemode: wd });
+    ok(b.ack && /safe-mode boot happened \(after 3 watchdog resets in a row\)/.test(b.safe) && !/short power cycles/.test(b.safe),
+       'safe mode: a past safe-mode boot after watchdog resets says so, not short power cycles');
+  }
   b = bannerText({ supported: true, state: st({ setting: 'off', running: 'on', fallback: '1' }), safemode: {} });
   ok(b.safe && b.fallback && /several short/.test(b.safe), 'host link: a record and a fallback at once, two bars');
   ok(!bannerText({ supported: false, state: st({ fallback: '1', setting: 'off', running: 'on' }), safemode: null }).show,
@@ -1386,6 +1433,15 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
   API['/api/hostlink'] = { supported: true, state: st({}), safemode_now: {}, safemode: null, link: '1', uptime: '40' };
   await renderHostlink();
   ok(safeModeNow(), 'safe mode: an empty flag is still a safe-mode boot');
+  ok(safeModeDefaultLogin() && doc.querySelector('#safe-password').hidden === false,
+     'safe mode: a flag with no login line (an older image) is the default login');
+  API['/api/hostlink'] = { supported: true, state: st({}), safemode_now: { cause: 'watchdog', login: 'stored', exit: 'timed', exit_at: '1800' },
+                           safemode: null, link: '1', uptime: '40' };
+  await renderHostlink();
+  ok(safeModeNow() && !safeModeDefaultLogin() && doc.querySelector('#safe-password').hidden === true,
+     'safe mode: with login=stored the bar offers no new password, the saved one is in force');
+  ok(doc.querySelector('#hostlink-ack').hidden === false,
+     'safe mode: and Acknowledge is there with no record, to hold the timed exit');
   /* Back to the fallback answer the checks below read. */
   API['/api/hostlink'] = { supported: true, state: st({ setting: 'off', running: 'on', fallback: '1' }),
                            safemode_now: null, safemode: { short_boots: '3' }, link: '1', uptime: '40' };
@@ -1402,6 +1458,10 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
     ok(/five/.test(forgot) && /three/.test(forgot) && /2500BASE-X/.test(forgot) && /HiSGMII/.test(forgot)
        && /auto-negotiation is off/.test(forgot) && /three times first/.test(forgot),
        'sign-in: it gives both counts, what lowers it to three, and what to do when unsure');
+    ok(/within 30 minutes/.test(forgot) && /Only the power opens/.test(forgot) && !/normal boot/.test(forgot),
+       'sign-in: it says the safe mode ends by itself and that only the power opens the default');
+    ok(/refuses every password/.test(forgot) && /wait ten seconds/.test(forgot),
+       'sign-in: it says what to do when every password is refused (an unreadable settings partition)');
   }
   {
     const app = readFileSync(join(root, 'web', 'app.js'), 'utf8');
@@ -1434,6 +1494,12 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
     const acked = passwordSavedText('op', { safemode_now: {}, safemode: null });
     ok(!/Acknowledge/.test(acked[0]) && /Reboot to use it\./.test(acked[0]),
        'password: once acknowledged it no longer asks for an Acknowledge that is gone');
+    const timed = passwordSavedText('op', { safemode_now: { login: 'default', exit: 'timed' }, safemode: null });
+    ok(/Acknowledge the safe-mode bar, then reboot\./.test(timed[0]),
+       'password: a timed safe mode with no record still asks for the Acknowledge');
+    const stored = passwordSavedText('op', { safemode_now: { login: 'stored', exit: 'timed' }, safemode: {} });
+    ok(stored[0] === fresh[0] && stored[1] === fresh[1],
+       'password: a safe-mode boot that kept the saved login takes the new credential at once, like any boot');
   }
   ok(textOf(doc.querySelector('#hostlink-now')).includes('Host link'), 'host link: status rows render');
   ok(doc.querySelector('#hostlink').hidden === false, 'host link: the Host port block shows on an image that has it');

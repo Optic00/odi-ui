@@ -1347,6 +1347,21 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
     ok(/this page accepts the default password for this boot only; root over SSH does not/.test(b.safe)
        && !/default passwords work/.test(b.safe),
        'safe mode: root_password=failed is said apart: the page on the default, root over SSH not');
+    /* A flag with CR LF line ends: confd drops the CR, and so does the page. */
+    const crlf = { cause: 'config\r', login: 'stored\r', root_password: 'stored\r', exit_at: '1800\r', exit: 'timed\r' };
+    b = bannerText({ supported: true, state: st({}), safemode_now: crlf, safemode: null, uptime: '200' });
+    ok(b.ack && /settings partition cannot be used/.test(b.safe) && /saved password/.test(b.safe)
+       && /reboots after 30 minutes unless acknowledged/.test(b.safe),
+       'safe mode: a config flag with CR LF line ends and no record still offers Acknowledge, and reads as stored');
+    ok(passwordSavedText('op', { safemode_now: crlf, safemode: null })[0] === 'Saved to /etc/config/confd.auth.',
+       'password: and a saved password applies at once there');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: 'default\r' }, safemode: sb });
+    ok(/default passwords work for this boot only/.test(b.safe), 'safe mode: login=default with a CR is the default login');
+    for (const v of ['stored2', '', 'defaults', 'Default', 'default x']) {
+      b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: v }, safemode: sb });
+      ok(/saved password and SSH keys still apply/.test(b.safe) && !/default password/.test(b.safe),
+         `safe mode: login=${JSON.stringify(v)} is not the default login, as confd reads it`);
+    }
     b = bannerText({ supported: true, state: st({}), safemode_now: null, safemode: wd });
     ok(b.ack && /safe-mode boot happened \(after 3 watchdog resets in a row\)/.test(b.safe) && !/short power cycles/.test(b.safe),
        'safe mode: a past safe-mode boot after watchdog resets says so, not short power cycles');
@@ -1458,8 +1473,15 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
     ok(/five/.test(forgot) && /three/.test(forgot) && /2500BASE-X/.test(forgot) && /HiSGMII/.test(forgot)
        && /auto-negotiation is off/.test(forgot) && /three times first/.test(forgot),
        'sign-in: it gives both counts, what lowers it to three, and what to do when unsure');
-    ok(/within 30 minutes/.test(forgot) && /Only the power opens/.test(forgot) && !/normal boot/.test(forgot),
-       'sign-in: it says the safe mode ends by itself and that only the power opens the default');
+    ok(/within 30 minutes/.test(forgot) && /The power is what opens/.test(forgot) && !/normal boot/.test(forgot),
+       'sign-in: it says the safe mode ends by itself and that the power opens the default');
+    ok(!/Only the power/.test(forgot) && /resets in a row within the first minute that leave no record/.test(forgot),
+       'sign-in: and does not claim more: resets that leave no record count like power cycles');
+    ok(/resets in a row within the first minute that leave no record/.test(html.replace(/\s+/g, ' ')),
+       'safe mode: the help under System, Access carries the same qualification');
+    ok(!/boot uses the saved configuration again, with the fibre on/.test(html.replace(/\s+/g, ' '))
+       && /unless what led here is still there/.test(html.replace(/\s+/g, ' ')) && /firmware trial is armed/.test(html.replace(/\s+/g, ' ')),
+       'safe mode: the help does not promise that the next boot brings the fibre back');
     ok(/refuses every password/.test(forgot) && /wait ten seconds/.test(forgot),
        'sign-in: it says what to do when every password is refused (an unreadable settings partition)');
   }

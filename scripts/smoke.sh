@@ -2325,6 +2325,28 @@ check "  the saved credential is accepted" 200 "$(code -u "$AUTH" "http://127.0.
 { printf 'cause=short_boots\nlogin=default\n'; head -c 2000 /dev/zero | tr '\0' 'x'; printf '\n'; } > /var/run/safe-mode
 check "  not even when the part that was read says login=default" 401 \
 	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+# A NUL byte in the flag would end the text for a parser that stops at it,
+# and hide the lines behind it: such a flag opens nothing either.
+printf 'cause=watchdog\n\0\nlogin=stored\nexit=timed\n' > /var/run/safe-mode
+check "safe-mode boot: a NUL byte hiding login=stored does not open the default" 401 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+check "  the saved credential is accepted" 200 "$(code -u "$AUTH" "http://127.0.0.1:$PORT/api/schema")"
+printf 'cause=short_boots\nlogin=default\n\0' > /var/run/safe-mode
+check "  not even behind a login=default line" 401 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+# A flag that is there and cannot be read (a directory in its place): no
+# default from it, and with confd.auth absent no fallback either.
+rm -f /var/run/safe-mode
+mkdir /var/run/safe-mode
+check "safe-mode flag that cannot be read: the default is not opened by it" 401 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+check "  the saved credential is accepted" 200 "$(code -u "$AUTH" "http://127.0.0.1:$PORT/api/schema")"
+mv /etc/config/confd.auth /etc/config/confd.auth.away
+check "safe-mode flag that cannot be read, confd.auth absent: every login is refused" 401 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+check "  the saved one too" 401 "$(code -u "$AUTH" "http://127.0.0.1:$PORT/api/schema")"
+mv /etc/config/confd.auth.away /etc/config/confd.auth
+rmdir /var/run/safe-mode
 { printf 'cause=short_boots\n'; head -c 900 /dev/zero | tr '\0' 'x'; printf '\n'; } > /var/run/safe-mode
 check "  a long flag that still fits, with no login= field, is the older image: the default" 200 \
 	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"

@@ -539,7 +539,9 @@
              power-ups below.</p>
           <p><strong>How to leave it.</strong> If you lost your password, set a new one here (or add an SSH key):
              it is saved and takes effect from the next boot. Acknowledge the banner, then reboot. The next
-             boot uses the saved configuration again, with the fibre on. A safe mode nobody acknowledges
+             boot uses the saved configuration again and turns the fibre back on, unless what led here is
+             still there (a settings partition that still cannot be used makes it a safe mode again) or a
+             firmware trial is armed, which that reboot starts. A safe mode nobody acknowledges
              ends by itself: the stick reboots after 30 minutes, so the fibre does not stay off on a stick
              nobody is looking at. The reboot waits for a firmware write that is running. Acknowledge keeps
              the safe mode up until you reboot.</p>
@@ -552,7 +554,9 @@
              54 seconds before its kernel starts; that can vary by board).</p>
           <p><strong>The trade-off.</strong> Anyone who can power-cycle the stick can do this, and gets
              the default password for that boot, for 30 minutes unless they acknowledge. A reset the stick
-             does to itself gives nobody the default password.</p>
+             records as its own (its watchdog, a crash, a reboot) gives nobody the default password. One
+             case is not told apart: five resets in a row within the first minute that leave no record,
+             such as a hard hang, count like power cycles.</p>
         </details>
         <div id="pw-out"></div>
       </section>

@@ -602,10 +602,12 @@ const char *request_refusal(const char *r)
  *               password, and falling back to the default would open the
  *               stick to whoever reaches the port with nobody at it. One
  *               power cycle is the way in (login=default). Or the flag
- *               could not be judged: a read error, or a read that filled
- *               the buffer, which may have cut the line that matters. An
- *               image that writes the flag in one rename never shows half
- *               of one, so this is damage, and damage opens nothing.
+ *               could not be judged: a read error, a read that filled
+ *               the buffer, which may have cut the line that matters, or a
+ *               NUL byte in what was read, which would end the text before
+ *               the lines behind it. An image that writes the flag in one
+ *               rename never shows half of one, so this is damage, and
+ *               damage opens nothing.
  *
  * A line may end in CR LF. login=stored anywhere wins over login=default.
  */
@@ -616,12 +618,16 @@ static int safemode_login(void)
 	char flag[1024];
 	long got = read_file(SAFEMODE_FLAG, flag, sizeof(flag));
 	const char *p = flag;
+	unsigned long n0;
 	int field = 0, stored = 0, config = 0;
 
 	if (got == -ENOENT_)
 		return SM_NONE;
 	if (got < 0 || (unsigned long)got >= sizeof(flag) - 1)
 		return SM_STRICT;
+	for (n0 = 0; n0 < (unsigned long)got; n0++)
+		if (!flag[n0])
+			return SM_STRICT;
 	while (*p) {
 		const char *e = p;
 		unsigned long n;

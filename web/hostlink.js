@@ -94,8 +94,8 @@ function bannerText(h) {
   const out = { show: false, safe: null, fallback: null, ack: false, reseed: null };
   if (!h) return out;
   const st = h.state || {};
-  const now = h.safemode_now;
-  const rec = h.safemode;
+  const now = clean(h.safemode_now);
+  const rec = clean(h.safemode);
   /* cleared is a list: HOST_AUTONEG, HOST_SERDES, OMCI_UNI_LOCK, joined
      with commas, or none or failed. */
   const cleared = (s) => {
@@ -154,11 +154,25 @@ const WHY = {
   config: ' the stick entered by itself because its settings partition cannot be used',
 };
 
-/* Whether a safe-mode flag opens the default credentials: every flag does
-   except one that says login=stored (odi-oss writes it when no power cycle
-   led into the safe mode). An older image writes no login= line and opens
-   them always, which is what confd does with such a flag too. */
-const defaultLogin = (now) => !!now && now.login !== 'stored';
+/* A flag or record as the page reads it: every value without a trailing CR,
+   which a file with CR LF line ends leaves on it. confd drops the CR when it
+   judges the login, so the page has to read the same file the same way. */
+function clean(r) {
+  if (!r) return r;
+  const out = {};
+  for (const k of Object.keys(r)) out[k] = typeof r[k] === 'string' ? r[k].replace(/\r+$/, '') : r[k];
+  return out;
+}
+
+/* Whether a safe-mode flag opens the default credentials, as confd judges
+   it (http.c, safemode_login): login=default does, and so does a flag with
+   no login field at all, which is an older image that opens them on every
+   safe-mode boot. A login field with any other value does not: stored is
+   what odi-oss writes when no power cycle led into the safe mode. */
+const defaultLogin = (now) => {
+  const c = clean(now);
+  return !!c && (c.login === undefined || c.login === 'default');
+};
 
 /* Which passwords a safe-mode boot answers to, for the bar. root over SSH is
    said apart from this page: root_password=failed is a boot whose web login
@@ -245,12 +259,13 @@ function safeModeDefaultLogin() {
  */
 function passwordSavedText(user, h) {
   const saved = 'Saved to /etc/config/confd.auth.';
-  if (!(h && defaultLogin(h.safemode_now))) {
+  const smNow = clean(h && h.safemode_now);
+  if (!(h && defaultLogin(smNow))) {
     return [saved, 'You stay signed in here. Any other browser signed in to this page is signed out, '
       + 'and signs in again as ' + user + '.'];
   }
   return [saved + ' From the next boot this page answers to ' + user + ' and the new password. '
-      + (h.safemode || h.safemode_now.exit === 'timed' ? 'Acknowledge the safe-mode bar, then reboot.' : 'Reboot to use it.'),
+      + (h.safemode || smNow.exit === 'timed' ? 'Acknowledge the safe-mode bar, then reboot.' : 'Reboot to use it.'),
     'You stay signed in here. Any other browser signed in to this page is signed out, and until the '
       + 'reboot signs in again with admin / admin.'];
 }

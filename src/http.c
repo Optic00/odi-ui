@@ -609,7 +609,8 @@ const char *request_refusal(const char *r)
  *               rename never shows half of one, so this is damage, and
  *               damage opens nothing.
  *
- * A line may end in CR LF. login=stored anywhere wins over login=default.
+ * A line may end in CR LF: one CR is dropped, no more. login=stored
+ * anywhere wins over login=default, whichever comes last.
  */
 enum { SM_NONE, SM_DEFAULT, SM_STORED, SM_STRICT };
 
@@ -651,6 +652,21 @@ static int safemode_login(void)
 	if (!stored)
 		return SM_DEFAULT;
 	return config ? SM_STRICT : SM_STORED;
+}
+
+/*
+ * The same decision by name, for /api/hostlink: none, default, stored or
+ * strict. The page says which passwords apply from this, not from a
+ * reading of the flag of its own, so the bar and the login cannot disagree.
+ */
+const char *safemode_login_name(void)
+{
+	switch (safemode_login()) {
+	case SM_NONE:    return "none";
+	case SM_DEFAULT: return "default";
+	case SM_STORED:  return "stored";
+	default:         return "strict";
+	}
 }
 
 static long load_credential(int *is_default)

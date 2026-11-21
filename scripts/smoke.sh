@@ -2353,7 +2353,31 @@ check "  a long flag that still fits, with no login= field, is the older image: 
 printf 'cause=watchdog\nlogin=stored' > /var/run/safe-mode
 check "safe-mode boot: login=stored as a last line with no newline counts" 401 \
 	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+# /api/hostlink says what the flag means for the login (safe_login), from
+# the same parser: the page takes it from there and reads no flag itself.
+sl() { curl -s -u "${1:-$AUTH}" "http://127.0.0.1:$PORT/api/hostlink" | sed -n 's/.*"safe_login":"\([a-z]*\)".*/\1/p'; }
+printf '%s\n' cause=short_boots login=default exit=timed > /var/run/safe-mode
+check "hostlink: login=default is safe_login default" default "$(sl admin:admin)"
+printf '%s\n' cause=short_boots short_boots=5 > /var/run/safe-mode
+check "hostlink: no login= field (an older image) is safe_login default" default "$(sl admin:admin)"
+printf '%s\n' cause=watchdog login=stored exit=timed > /var/run/safe-mode
+check "hostlink: login=stored is safe_login stored" stored "$(sl)"
+printf '%s\n' cause=config login=stored exit=timed > /var/run/safe-mode
+check "hostlink: login=stored with cause=config is safe_login strict" strict "$(sl)"
+printf 'cause=watchdog\n\0\nlogin=stored\n' > /var/run/safe-mode
+check "hostlink: a flag with a NUL byte is safe_login strict" strict "$(sl)"
+{ printf 'cause=short_boots\nlogin=default\n'; head -c 2000 /dev/zero | tr '\0' 'x'; printf '\n'; } > /var/run/safe-mode
+check "hostlink: a flag cut by the read buffer is safe_login strict" strict "$(sl)"
+printf '%s\n' cause=short_boots login=stored login=default > /var/run/safe-mode
+check "hostlink: login=stored before login=default is safe_login stored" stored "$(sl)"
+check "  and admin:admin is refused, as the field says" 401 "$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+printf 'cause=short_boots\r\nlogin=default\r\r\n' > /var/run/safe-mode
+check "hostlink: login=default with two CRs is not the default: one CR is dropped, no more" stored "$(sl)"
+check "  and admin:admin is refused" 401 "$(code -u admin:admin "http://127.0.0.1:$PORT/api/schema")"
+printf 'cause=short_boots\r\nlogin=default\r\n' > /var/run/safe-mode
+check "hostlink: login=default with one CR is safe_login default" default "$(sl admin:admin)"
 rm -f /var/run/safe-mode
+check "hostlink: no flag is safe_login none" none "$(sl)"
 check "the next boot: the saved credential" 200 "$(code -u "$AUTH" "http://127.0.0.1:$PORT/api/schema")"
 check "the Host port page is served" 200 "$(code -u "$AUTH" "http://127.0.0.1:$PORT/hostlink.js")"
 rm -f /etc/scripts/host-autoneg.sh /etc/scripts/safe-mode.sh /var/run/host-autoneg

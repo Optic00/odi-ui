@@ -123,7 +123,7 @@ function bannerText(h) {
         : ' Acknowledged: the next boot is a normal boot.';
     }
     out.safe = 'Safe mode. A recovery boot' + WHY[now.cause || ''] + ': the fibre (PON) is off and '
-      + loginText(now)
+      + loginText(h, now)
       + cleared(now) + end;
     out.ack = !!rec || timed;
   } else if (rec) {
@@ -154,24 +154,28 @@ const WHY = {
   config: ' the stick entered by itself because its settings partition cannot be used',
 };
 
-/* A flag or record as the page reads it: every value without a trailing CR,
-   which a file with CR LF line ends leaves on it. confd drops the CR when it
-   judges the login, so the page has to read the same file the same way. */
+/* A flag or record as the page reads it: every value without the one
+   trailing CR that a file with CR LF line ends leaves on it. One, as confd
+   drops one: a second CR is part of the value for both. */
 function clean(r) {
   if (!r) return r;
   const out = {};
-  for (const k of Object.keys(r)) out[k] = typeof r[k] === 'string' ? r[k].replace(/\r+$/, '') : r[k];
+  for (const k of Object.keys(r)) out[k] = typeof r[k] === 'string' ? r[k].replace(/\r$/, '') : r[k];
   return out;
 }
 
-/* Whether a safe-mode flag opens the default credentials, as confd judges
-   it (http.c, safemode_login): login=default does, and so does a flag with
-   no login field at all, which is an older image that opens them on every
-   safe-mode boot. A login field with any other value does not: stored is
-   what odi-oss writes when no power cycle led into the safe mode. */
-const defaultLogin = (now) => {
-  const c = clean(now);
-  return !!c && (c.login === undefined || c.login === 'default');
+/* Whether this safe-mode boot answers to the default credentials. confd
+   decides that when it checks a login (http.c, safemode_login) and says so
+   in safe_login: default, stored, strict (the saved credential or nothing)
+   or none. The page takes its word and does not read the flag again, so
+   the bar cannot say one thing while the login does another. Without the
+   field (an answer that predates it) the flag is read as confd reads a
+   whole one: login=default, or no login field at all. */
+const defaultLogin = (h) => {
+  const now = clean(h && h.safemode_now);
+  if (!now) return false;
+  if (h.safe_login !== undefined) return h.safe_login === 'default';
+  return now.login === undefined || now.login === 'default';
 };
 
 /* Which passwords a safe-mode boot answers to, for the bar. root over SSH is
@@ -179,8 +183,8 @@ const defaultLogin = (now) => {
    is the default while root kept its own account (the image could not put
    the default one in place). An older image writes no root_password line,
    or default. */
-function loginText(now) {
-  if (!defaultLogin(now)) return 'your saved password and SSH keys still apply.';
+function loginText(h, now) {
+  if (!defaultLogin(h)) return 'your saved password and SSH keys still apply.';
   if (now.root_password === 'failed') {
     return 'this page accepts the default password for this boot only; root over SSH does not (its saved login applies).';
   }
@@ -245,7 +249,7 @@ function safeModeNow() {
 
 /* Whether this boot is a safe-mode boot that answers to admin / admin. */
 function safeModeDefaultLogin() {
-  return defaultLogin(H && H.safemode_now);
+  return defaultLogin(H);
 }
 
 /*
@@ -260,7 +264,7 @@ function safeModeDefaultLogin() {
 function passwordSavedText(user, h) {
   const saved = 'Saved to /etc/config/confd.auth.';
   const smNow = clean(h && h.safemode_now);
-  if (!(h && defaultLogin(smNow))) {
+  if (!defaultLogin(h)) {
     return [saved, 'You stay signed in here. Any other browser signed in to this page is signed out, '
       + 'and signs in again as ' + user + '.'];
   }

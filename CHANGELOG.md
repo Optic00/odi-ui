@@ -19,8 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   default on every safe-mode boot, as before; a `login=` field with any
   value but `default` does not, lines may end in CR LF, and a flag that
   fills the read buffer, holds a NUL byte or cannot be read opens nothing.
-  The page reads the flag the same way (a trailing CR dropped, any `login`
-  value but `default` taken as stored). The safe-mode bar
+  `/api/hostlink` answers that decision as `safe_login` (`none`, `default`,
+  `stored`, `strict`) and the page takes it from there, so the bar and the
+  login cannot disagree. The safe-mode bar
   says why the boot is a safe-mode boot, which passwords apply (root over
   SSH apart when the image reports `root_password=failed`), and that it
   reboots after 30 minutes (`exit_at=`) unless acknowledged, with no promise

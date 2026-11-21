@@ -378,7 +378,11 @@ Refused regardless of schema: `LAN_SDS_MODE`, `LAN_SPEED_MODE`, `FIBER_MODE`.
                                           unacknowledged one, `reseed` (the record of
                                           a config store recreated at boot,
                                           `/etc/config/config-reseeded`: `files`,
-                                          `build`, `uptime`, or null), the host link;
+                                          `build`, `uptime`, or null), the host link,
+                                          `safe_login` (what the flag means for the web
+                                          login, as the request path judges it: `none`,
+                                          `default`, `stored`, or `strict`, the saved
+                                          credential or nothing);
                                           `supported` is false on an image without it
     POST /api/hostlink  action=try&mode=on|off
                         action=confirm | revert | ack | reseed-ack

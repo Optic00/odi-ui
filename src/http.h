@@ -75,6 +75,9 @@ int header_has(const char *r, const char *name, const char *needle);
  * Reported to the page, because a well-known default that nobody can see is
  * the same thing as no password at all. */
 int auth_is_default(void);
+/* What the odi-oss safe-mode flag of this boot means for the web login:
+ * "none" (no flag), "default", "stored" or "strict" (http.c). */
+const char *safemode_login_name(void);
 /* Whether `pass` is the password of the credential in force (constant time). */
 int password_matches(const char *pass);
 /* Write /etc/config/confd.auth. Returns 0 and sets *why on refusal. */

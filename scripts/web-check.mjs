@@ -1357,11 +1357,23 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
        'password: and a saved password applies at once there');
     b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: 'default\r' }, safemode: sb });
     ok(/default passwords work for this boot only/.test(b.safe), 'safe mode: login=default with a CR is the default login');
-    for (const v of ['stored2', '', 'defaults', 'Default', 'default x']) {
+    for (const v of ['stored2', '', 'defaults', 'Default', 'default x', 'default\r\r']) {
       b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: v }, safemode: sb });
       ok(/saved password and SSH keys still apply/.test(b.safe) && !/default password/.test(b.safe),
          `safe mode: login=${JSON.stringify(v)} is not the default login, as confd reads it`);
     }
+    /* confd says what the flag means (safe_login); the page takes its word
+       over anything it could read from the flag itself. */
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: 'default' }, safemode: sb, safe_login: 'strict' });
+    ok(/saved password and SSH keys still apply/.test(b.safe) && !/default password/.test(b.safe),
+       'safe mode: safe_login=strict wins over a flag that reads login=default (a damaged flag confd refused)');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { ...sb, login: 'default' }, safemode: sb, safe_login: 'stored' });
+    ok(/saved password and SSH keys still apply/.test(b.safe),
+       'safe mode: safe_login=stored wins too (login=stored beside login=default)');
+    b = bannerText({ supported: true, state: st({}), safemode_now: { cause: 'short_boots' }, safemode: null, safe_login: 'default' });
+    ok(/default passwords work for this boot only/.test(b.safe), 'safe mode: safe_login=default is the default login');
+    ok(passwordSavedText('op', { safemode_now: { ...sb }, safemode: sb, safe_login: 'strict' })[0] === 'Saved to /etc/config/confd.auth.',
+       'password: with safe_login=strict a saved password applies at once');
     b = bannerText({ supported: true, state: st({}), safemode_now: null, safemode: wd });
     ok(b.ack && /safe-mode boot happened \(after 3 watchdog resets in a row\)/.test(b.safe) && !/short power cycles/.test(b.safe),
        'safe mode: a past safe-mode boot after watchdog resets says so, not short power cycles');
@@ -1475,9 +1487,9 @@ ok(slotKind({ slots: { 1: {} } }, '1').kind === 'unknown', 'an unreadable slot i
        'sign-in: it gives both counts, what lowers it to three, and what to do when unsure');
     ok(/within 30 minutes/.test(forgot) && /The power is what opens/.test(forgot) && !/normal boot/.test(forgot),
        'sign-in: it says the safe mode ends by itself and that the power opens the default');
-    ok(!/Only the power/.test(forgot) && /resets in a row within the first minute that leave no record/.test(forgot),
+    ok(!/Only the power/.test(forgot) && /three or five short boots in a row with no recorded reason for the last one/.test(forgot.replace(/\s+/g, ' ')),
        'sign-in: and does not claim more: resets that leave no record count like power cycles');
-    ok(/resets in a row within the first minute that leave no record/.test(html.replace(/\s+/g, ' ')),
+    ok(/three or five short boots in a row, with no recorded reason for the last one/.test(html.replace(/\s+/g, ' ')),
        'safe mode: the help under System, Access carries the same qualification');
     ok(!/boot uses the saved configuration again, with the fibre on/.test(html.replace(/\s+/g, ' '))
        && /unless what led here is still there/.test(html.replace(/\s+/g, ' ')) && /firmware trial is armed/.test(html.replace(/\s+/g, ' ')),

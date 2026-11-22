@@ -6,7 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
-- Config: `GPON_KEEP_DISABLE` shows on as the default, to match odi-oss, which now keeps an OLT Emergency Stop across reboots unless the key is `0` (AndreZiviani/odi-oss#482).
+- Config: `GPON_KEEP_DISABLE` shows on as the default, to match odi-oss,
+  which now keeps an OLT Emergency Stop across reboots unless the key is
+  `0`. The help names the way out: set it to `0` and reboot, or run
+  `gpon-hold.sh clear`; a safe-mode boot does not release the hold. This
+  confd needs an odi-oss image with odi-oss #495: on an older image an unset
+  key still means off, and the page would show it as on. Pairs with odi-oss
+  #495 (AndreZiviani/odi-oss#482).
 - Status: the status poll runs one at a time. A poll that took longer than
   the 15 s between ticks had the next one queue behind it in confd, which
   answers one request at a time, and the link check could take its samples

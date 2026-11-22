@@ -723,6 +723,38 @@ function lineFacts(raw) {
  * evidence, and the finding of the first stage that failed. r is linkCheck()'s
  * answer, or null to hide it (an image that reports too little to check).
  */
+/*
+ * The finding of the link check as one plain sentence at the top of the
+ * Status view, for someone who does not read ONU states: whether the stick
+ * is connected and carries data and, if not, where to look, without
+ * O-states, OMCI or GEM ports. Keyed by the finding's `why` (linkcheck.js),
+ * never by its text. A good finding says only what the check has seen:
+ * registered, measuring, quiet or traffic. The stages and the full finding
+ * stay below, under Registration, and the colour of the dot is in the words.
+ */
+const HEADLINES = {
+  none: ['none', 'Waiting for the stick\u2026'],
+  los: ['bad', 'The stick cannot read a usable signal from the fibre. Check the cable and its connectors.'],
+  o7: ['bad', 'The provider has switched this stick off.'],
+  registering: ['warn', 'Connecting to the provider\u2026'],
+  ranging: ['bad', 'The connection to the provider does not complete.'],
+  dropped: ['bad', 'The provider drops the stick after connecting. Check its password with your provider.'],
+  serial: ['bad', 'The provider does not know this stick. Check its serial number with your provider.'],
+  stuck: ['bad', 'Not connected to the provider. Check the serial number and password with your provider.'],
+  mibloop: ['bad', 'The provider keeps restarting the service setup.'],
+  'setup-wait': ['warn', 'Connected. Waiting for the provider to set up the service\u2026'],
+  'setup-none': ['bad', 'Connected, but the provider has not set up the service.'],
+  registered: ['ok', 'Connected to the provider.'],
+  measuring: ['ok', 'Connected. Measuring traffic\u2026'],
+  quiet: ['ok', 'Connected. No traffic right now.'],
+  traffic: ['ok', 'The fibre connection is working and carrying data.'],
+  idle: ['warn', 'Connected, but no data has passed for a while.'],
+};
+function headline(r) {
+  const h = r && HEADLINES[r.finding.why];
+  return h ? { cls: h[0], text: h[1] } : null;
+}
+
 const MARKS = { ok: '\u2713', fail: '\u2717', wait: '\u2026', unknown: '?' };
 function renderLinkCheck(r) {
   const box = $('#linkcheck');
@@ -735,6 +767,11 @@ function renderLinkCheck(r) {
   /* A failing stage is when someone asks for help: point at the bundle there. */
   const help = $('#lc-help');
   if (help) help.hidden = !r || r.finding.cls !== 'bad';
+  /* A live region that stays in the page, empty without a finding: a screen
+     reader hears a change of the sentence, and reconcile() leaves the same
+     sentence untouched, so a poll that changes nothing says nothing. */
+  const h = headline(r);
+  reconcile($('#verdict'), ...(h ? [el('i', 'dot ' + h.cls), el('span', null, h.text)] : []));
   if (!r) return;
   const ol = $('#lc-stages');
   ol.textContent = '';
@@ -749,4 +786,4 @@ function renderLinkCheck(r) {
   p.textContent = r.finding.text;
 }
 
-export { markFresh, markFailed, checkStale, STALE_MS, renderStatus, renderLinkCheck, renderPon, sections, upFor, prevBoot, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };
+export { headline, markFresh, markFailed, checkStale, STALE_MS, renderStatus, renderLinkCheck, renderPon, sections, upFor, prevBoot, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };

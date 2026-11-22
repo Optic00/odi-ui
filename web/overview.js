@@ -102,6 +102,32 @@ function liveRates(p) {
    failed read, or the tick stopped) the 15 s figure stands, as it always did. */
 const pickRates = (r15) => (LIVE && Date.now() - LIVE.at < LIVE_FRESH_MS ? LIVE.r : r15);
 
+/*
+ * How fast the lines move. The light on the fibre and the data on the host
+ * pins run at a pace taken from what crosses the fibre port, down and up
+ * together, on a log scale: 2.4 s per dash at 1 kB/s or less, 0.4 s at
+ * 125 MB/s, a full gigabit. With nothing crossing, both lines stand, so a
+ * moving line means traffic, not only light. Before a rate is known (the
+ * first poll) the fibre moves at a middle pace while the ONU is in service,
+ * as it always did, and the pins wait for a figure. The pace is a custom
+ * property on #overview, which reconcile() never replaces.
+ */
+let PACE = { on: false, los: false, linked: false };
+const totalRate = (r) => (r && r.down !== null && r.up !== null ? r.down + r.up : null);
+function pace(host, r) {
+  if (!host) return;
+  const t = totalRate(r);
+  if (t === null) host.style.removeProperty('--ov-dur');
+  else {
+    const x = Math.log10(Math.max(t, 1000));
+    host.style.setProperty('--ov-dur', Math.min(2.4, Math.max(0.4, 2.4 - (x - 3) * 2 / 5.1)).toFixed(2) + 's');
+  }
+  const fibre = host.querySelector('.ov-glass');
+  const pins = host.querySelector('.ov-pins');
+  if (fibre) fibre.classList.toggle('flowing', PACE.on && t !== 0);
+  if (pins) pins.classList.toggle('flowing', PACE.on && PACE.linked && t > 0);
+}
+
 /* The two rates on the fibre line, and the Switch part: every second from
    the tick, so the figures are set where they stand rather than redrawn. */
 function paintRates(r) {
@@ -120,11 +146,17 @@ function paintRates(r) {
     set(vals[0], '\u2193 ' + rateText(r.down));
     set(vals[1], '\u2191 ' + rateText(r.up));
   }
+  pace($('#overview'), r);
 }
 
-/* The tick: what /api/ponload said, drawn now. A first read draws nothing. */
+/* The tick: what /api/ponload said, drawn now. A first read draws nothing.
+   Its ONU state, when it has one, is newer than the last status poll's, so
+   the lines follow it; loss of signal and the host link stay those of the
+   poll. */
 function liveFibreRates(p) {
   const r = liveRates(p);
+  const m = /\((O\d)\)/.exec((p && p.onu_state) || '');
+  if (m) PACE.on = m[1] === 'O5' && !PACE.los;
   if (r) paintRates(r);
   return r;
 }
@@ -237,17 +269,19 @@ function renderOverview(f) {
      and up below, and the line moves while the ONU is in service. The same
      figures are in the Switch part, so the line stays out of the way of a
      screen reader. */
-  const fibreLine = el('div', 'ov-line ov-glass' + (f.state === 'O5' && !f.los ? ' flowing' : ''));
+  PACE = { on: f.state === 'O5' && !f.los, los: !!f.los, linked: linked === true };
+  const fibreLine = el('div', 'ov-line ov-glass' + (PACE.on && totalRate(r) !== 0 ? ' flowing' : ''));
   fibreLine.setAttribute('aria-hidden', 'true');
   if (r && r.down !== null && r.up !== null) {
     fibreLine.append(el('span', 'ov-rate down', '\u2193 ' + bytes(r.down) + '/s'),
       el('span', 'ov-rate up', '\u2191 ' + bytes(r.up) + '/s'));
   }
-  const pins = el('div', 'ov-line ov-pins');
+  const pins = el('div', 'ov-line ov-pins' + (PACE.on && PACE.linked && totalRate(r) > 0 ? ' flowing' : ''));
   pins.setAttribute('aria-hidden', 'true');
   /* Built whole, then laid over what is on screen: only text and classes
      change from one poll to the next (reconcile in dom.js). */
   reconcile(host, fibre, fibreLine, stick, pins, router);
+  pace(host, r);
 }
 
 export { renderOverview, cpuBusy, liveFibreRates };

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Status: one plain sentence at the top says what the link check found, in
+  words without ONU states, OMCI or GEM ports: *The fibre connection is
+  working and carrying data.*, *Connected. No traffic right now.*, *The stick
+  cannot read a usable signal from the fibre. Check the cable and its
+  connectors.*, *The provider does not know this stick. Check its serial
+  number with your provider.* and twelve more, one for each case the check
+  tells apart. Each finding of `linkcheck.js` now carries a `why` key for it.
+  The sentence is a live region, so a screen reader hears it change. The
+  stages and the full finding stay under Registration.
+
+- Status: the fibre line in the stick overview moves at a pace taken from
+  what crosses the fibre port (2.4 s per dash at 1 kB/s down to 0.4 s at a
+  full gigabit), and stands when nothing crosses it. The host pins to the
+  router move too while there is traffic and the host link is up. The 1 s
+  PON tick keeps both up to date between polls. Reduced motion and stale
+  figures stop both.
+
 - Status: the ONU state is read in every state, not only in O5. diag names
   each state itself (`Initial State(O1)`, `Standby State(O2)`, `Serial Number
   State(O3)`, `Ranging State(O4)`, `POPUP State(O6)`, `Emergency Stop

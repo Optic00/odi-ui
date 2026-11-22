@@ -26,7 +26,7 @@ class El {
   constructor(tag) {
     this.tagName = tag; this.children = []; this.attrs = {};
     this.dataset = {}; this.options = [];
-    this.style = { setProperty: (k, v) => { this.style[k] = v; } };
+    this.style = { setProperty: (k, v) => { this.style[k] = v; }, removeProperty: (k) => { delete this.style[k]; } };
     this._text = ''; this.hidden = false; this.disabled = false;
     this.classList = {
       _s: new Set(),
@@ -83,7 +83,18 @@ class El {
   removeAttribute(k) { delete this.attrs[k]; }
   addEventListener() {}
   focus() {}
-  querySelector() { return null; }
+  /* One class (".ov-glass"), the first descendant that has it, as a browser
+     answers; any other selector finds nothing here. */
+  querySelector(sel) {
+    if (!/^\.[\w-]+$/.test(sel)) return null;
+    for (const c of this.children) {
+      if (c.nodeType === 3) continue;
+      if (c.classList.contains(sel.slice(1))) return c;
+      const d = c.querySelector(sel);
+      if (d) return d;
+    }
+    return null;
+  }
   querySelectorAll() { return []; }
   get value() { return this._value ?? ''; }
   set value(v) { this._value = v; }
@@ -504,6 +515,26 @@ ok(true, 'renderStatus runs against a diag capture');
        'overview: the next poll keeps the same part node and updates its figure in place');
     ok(doc.querySelector('#env').children[1] === envRow,
        'status: the transceiver rows are updated in place, not rebuilt');
+    ok(host.style['--ov-dur'] === '1.79s' && host.children[3].className === 'ov-line ov-pins flowing',
+       'overview: 36 kB/s across the fibre port sets the pace of both lines, and the host pins move');
+    t += 10000;
+    renderStatus(raw2, null, st('200 0 200 1000 0 0 0 0 0 0'));
+    ok(!host.children[1].classList.contains('flowing') && !host.children[3].classList.contains('flowing'),
+       'overview: with no byte crossing the fibre port, both lines stand');
+    /* The one-second tick sets them going and stops them again on its own. */
+    const { liveFibreRates } = await import(join(root, 'web', 'overview.js'));
+    const o = (a, b) => ({ pon_in_octets: String(a), pon_out_octets: String(b), onu_state: 'Operation State(O5)' });
+    const realQ = doc.querySelector;
+    doc.querySelector = (sel) => (sel === '#overview' ? host : realQ(sel));
+    liveFibreRates({});
+    t += 1000; liveFibreRates(o(1000, 1000));
+    t += 1000; liveFibreRates(o(501000, 31000));
+    const moving = host.children[1].classList.contains('flowing') && host.children[3].classList.contains('flowing');
+    t += 1000; liveFibreRates(o(501000, 31000));
+    ok(moving && !host.children[1].classList.contains('flowing') && !host.children[3].classList.contains('flowing'),
+       'overview: the 1 s tick starts both lines with traffic and stops them without, between two polls');
+    doc.querySelector = realQ;
+    liveFibreRates({});
   }
   {
     const { reconcile } = await import(join(root, 'web', 'dom.js'));
@@ -877,6 +908,34 @@ ok(!/^<\d>/.test(logbox.children[0].textContent), 'the priority prefix is not sh
                  gem: 6, traffic: { in: 1000, out: 500 }, idle: 0 };
   const run = (over) => LC.linkCheck({ ...base, ...over });
   const at = (r, k) => r.stages.find((x) => x.key === k).status;
+
+  /* The plain sentence on top of the Status view, from real findings. */
+  {
+    const { headline } = await import(join(root, 'web', 'status.js'));
+    const omci = (o) => ({ omci: { ...base.omci, ...o } });
+    const loop = { resets: { olt: 9, local: 0, windowS: 600, recent: 9, loop: true } };
+    const cases = {
+      none: LC.linkCheck(null), traffic: run({}), registered: run({ traffic: undefined }),
+      measuring: run({ traffic: null }), quiet: run({ traffic: { in: 0, out: 0 }, idle: 0 }),
+      idle: run({ traffic: { in: 0, out: 0 }, idle: 99 }), los: run({ los: true, state: 'O1' }),
+      o7: run({ state: 'O7' }), registering: run({ state: 'O3', stalled: false }),
+      ranging: run({ state: 'O4' }), dropped: run({ state: 'O2', ranged: true }),
+      serial: run({ state: 'O2', ranged: false }), stuck: run({ state: 'O6' }),
+      mibloop: run(omci(loop)), 'setup-none': run({ ...omci({ mibSync: 0 }), gem: 0 }),
+      'setup-wait': run({ ...omci({ mibSync: 0 }), gem: 0, stalled: false }),
+    };
+    const got = Object.entries(cases).map(([k, r]) => [k, r.finding.why, headline(r)]);
+    ok(got.every(([k, why, h]) => why === k && h && h.text),
+       'headline: every finding of the link check names its case and has a sentence'
+       + got.filter(([k, why, h]) => why !== k || !h).map(([k, why]) => ` (${k}: ${why})`).join(''));
+    ok(got.every(([, , h]) => !/\bO[1-7]\b|OMCI|GEM|PLOAM|OLT/.test(h.text)),
+       'headline: no ONU state, OMCI, GEM, PLOAM or OLT in any sentence');
+    ok(got.filter(([, , h]) => /working/.test(h.text)).map(([k]) => k).join() === 'traffic',
+       'headline: only traffic seen on the fibre port reads as working');
+    ok(headline(cases.los).cls === 'bad' && headline(cases.idle).cls === 'warn'
+       && headline(cases.quiet).cls === 'ok' && headline(null) === null,
+       'headline: the dot follows the finding, and no check is no sentence');
+  }
 
   let r = run({});
   ok(r.finding.stage === null && r.finding.cls === 'good' && r.stages.every((x) => x.status === 'ok'),

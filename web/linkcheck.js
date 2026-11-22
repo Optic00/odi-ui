@@ -94,11 +94,13 @@ function linkCheck(f) {
   const out = STAGES.map(([key, name]) => ({ key, name, status: 'wait', evidence: '' }));
   const at = (k) => out.find((s) => s.key === k);
   const done = (k, status, evidence) => { Object.assign(at(k), { status, evidence }); };
-  const verdict = (k, cls, text) => ({ stages: out, finding: { stage: k, cls, text } });
+  /* `why` names the finding for the plain sentence on top of the Status view
+     (status.js, headline), which must not parse the text. */
+  const verdict = (k, cls, text, why) => ({ stages: out, finding: { stage: k, cls, text, why } });
 
   if (!f) {
     for (const s of out) s.status = 'unknown';
-    return { stages: out, finding: { stage: null, cls: 'warn', text: 'No answer from the stick yet.' } };
+    return { stages: out, finding: { stage: null, cls: 'warn', text: 'No answer from the stick yet.', why: 'none' } };
   }
 
   /* 1. Light. */
@@ -107,7 +109,7 @@ function linkCheck(f) {
     done('light', 'fail', 'LOS or LOF asserted, ' + rxText);
     return verdict('light', 'bad', 'No usable light on the fibre (loss of signal or framing). Check the '
       + 'connector, that the fibre is in the right port, and that it is clean: the stick cannot '
-      + 'register without light.');
+      + 'register without light.', 'los');
   }
   done('light', 'ok', rxText);
 
@@ -118,14 +120,14 @@ function linkCheck(f) {
     done('registered', 'fail', 'O7' + (f.o7Held ? ', disable kept across restarts' : ''));
     return verdict('registered', 'bad', 'The OLT disabled this ONU (O7, emergency stop): the laser is off '
       + 'until the OLT enables it again. That is the operator\'s decision, not a setting here; '
-      + (f.o7Held ? 'GPON_KEEP_DISABLE keeps it across restarts of the stick.' : 'ask them why.'));
+      + (f.o7Held ? 'GPON_KEEP_DISABLE keeps it across restarts of the stick.' : 'ask them why.'), 'o7');
   }
   if (f.state !== 'O5') {
     const where = (f.state || 'no state')
       + (id === null ? ', no ONU-ID' : typeof id === 'number' ? `, ONU-ID ${id}` : '');
     if (!f.stalled) {
       done('registered', 'wait', where);
-      return verdict('registered', 'warn', 'Registering with the OLT…');
+      return verdict('registered', 'warn', 'Registering with the OLT…', 'registering');
     }
     done('registered', 'fail', where);
     /*
@@ -139,19 +141,19 @@ function linkCheck(f) {
      */
     if (f.state === 'O4') {
       return verdict('registered', 'bad', 'The OLT assigned an ONU-ID but ranging does not complete (O4). '
-        + 'That is rarely a setting: look at the event=onu_state lines in the log for what ends each try.');
+        + 'That is rarely a setting: look at the event=onu_state lines in the log for what ends each try.', 'ranging');
     }
     if (f.ranged === true) {
       return verdict('registered', 'bad', 'The OLT ranges this stick and then drops it again before it can '
         + 'stay registered. With light on the fibre that usually means it refuses the PLOAM password '
-        + '(GPON_PLOAM_PASSWD): check it with your ISP.');
+        + '(GPON_PLOAM_PASSWD): check it with your ISP.', 'dropped');
     }
     if (f.ranged === false && (f.state === 'O2' || f.state === 'O3')) {
       return verdict('registered', 'bad', 'The OLT has not assigned an ONU-ID since the line stalled: it most '
-        + 'likely does not know this serial number (GPON_SN). Check it with your ISP.');
+        + 'likely does not know this serial number (GPON_SN). Check it with your ISP.', 'serial');
     }
     return verdict('registered', 'bad', 'Still not operational. With light on the fibre, being stuck before '
-      + 'O5 usually means a wrong serial number or PLOAM password: check them with your ISP.');
+      + 'O5 usually means a wrong serial number or PLOAM password: check them with your ISP.', 'stuck');
   }
   done('registered', 'ok', 'O5' + (typeof id === 'number' ? `, ONU-ID ${id}` : '')
     + (f.alloc === null || f.alloc === undefined ? '' : `, ${f.alloc} Alloc-ID${f.alloc === 1 ? '' : 's'}`));
@@ -168,17 +170,17 @@ function linkCheck(f) {
     return verdict('omci', 'bad', 'MIB reset loop: the OLT keeps throwing away what it provisioned and '
       + 'starting again. It usually does not accept something it reads: check the identity (equipment '
       + 'ID, vendor and product codes, software versions) and the unknown classes the stick reports, '
-      + 'and the before= field of the event=mib_reset lines in the log.');
+      + 'and the before= field of the event=mib_reset lines in the log.', 'mibloop');
   }
   if (!o) {
     done('omci', 'unknown', 'omcid state not available');
   } else if (o.mibSync === 0 && !f.gem) {
     done('omci', f.stalled ? 'fail' : 'wait', 'MIB data sync 0, nothing provisioned'
       + (r ? `, ${r.olt} MIB reset${r.olt === 1 ? '' : 's'} from the OLT` : ''));
-    if (!f.stalled) return verdict('omci', 'warn', 'Operational. Waiting for the OLT to provision over OMCI…');
+    if (!f.stalled) return verdict('omci', 'warn', 'Operational. Waiting for the OLT to provision over OMCI…', 'setup-wait');
     return verdict('omci', 'bad', 'Registered, but the OLT has not provisioned anything over OMCI. '
       + 'Some OLTs do that only for an ONU whose identity they expect: check the equipment ID and '
-      + 'the vendor and product codes against what your ISP supports.');
+      + 'the vendor and product codes against what your ISP supports.', 'setup-none');
   } else {
     done('omci', r && r.loop ? 'wait' : 'ok', `MIB data sync ${o.mibSync === null ? '?' : o.mibSync}`
       + (r ? `, ${r.recent} OLT reset${r.recent === 1 ? '' : 's'} in ${Math.round(r.windowS / 60)} min` : '')
@@ -191,9 +193,9 @@ function linkCheck(f) {
   } else if (f.gem === 0) {
     done('services', f.stalled ? 'fail' : 'wait', 'no GEM port in the MIB'
       + (f.alloc === null || f.alloc === undefined ? '' : `, ${f.alloc} Alloc-IDs`));
-    if (!f.stalled) return verdict('services', 'warn', 'Operational. Waiting for the OLT to set up the services…');
+    if (!f.stalled) return verdict('services', 'warn', 'Operational. Waiting for the OLT to set up the services…', 'setup-wait');
     return verdict('services', 'bad', 'The OLT has not set up any service (no GEM port). Without one '
-      + 'nothing can pass: the order may not be active yet on the operator\'s side.');
+      + 'nothing can pass: the order may not be active yet on the operator\'s side.', 'setup-none');
   } else {
     done('services', 'ok', `${f.gem} GEM port${f.gem === 1 ? '' : 's'}`);
   }
@@ -202,22 +204,22 @@ function linkCheck(f) {
   const t = f.traffic;
   if (t === undefined) {
     done('traffic', 'unknown', 'not measured here');
-    return verdict(null, 'good', 'Operational. The line is registered.');
+    return verdict(null, 'good', 'Operational. The line is registered.', 'registered');
   }
   if (!t) {
     done('traffic', 'wait', 'measuring');
-    return verdict('traffic', 'good', 'Operational. Measuring traffic…');
+    return verdict('traffic', 'good', 'Operational. Measuring traffic…', 'measuring');
   }
   const moved = (t.in || 0) + (t.out || 0);
   if (moved > 0) {
     done('traffic', 'ok', 'bytes in and out on the fibre port');
-    return verdict(null, 'good', 'Operational. The line is registered, provisioned and carrying traffic.');
+    return verdict(null, 'good', 'Operational. The line is registered, provisioned and carrying traffic.', 'traffic');
   }
   done('traffic', (f.idle || 0) >= IDLE_FAIL ? 'fail' : 'wait', 'no byte on the fibre port since the last sample');
-  if ((f.idle || 0) < IDLE_FAIL) return verdict('traffic', 'good', 'Operational. No traffic in the last sample.');
+  if ((f.idle || 0) < IDLE_FAIL) return verdict('traffic', 'good', 'Operational. No traffic in the last sample.', 'quiet');
   return verdict('traffic', 'warn', 'Provisioned, but nothing crosses the fibre port. Check the VLAN '
     + 'setting (the stick or the router tags) against what your ISP expects, and that the router '
-    + 'sends anything at all.');
+    + 'sends anything at all.', 'idle');
 }
 
 /*

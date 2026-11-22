@@ -203,7 +203,7 @@ main { padding: 24px 24px 120px; }
 }
 [data-stale] #p-status .num, [data-stale] #p-status .ov-val { color: var(--ink-3); }
 [data-stale] .ladder li.here { color: var(--bg); }
-[data-stale] .ov-glass.flowing { animation: none; }
+[data-stale] .ov-line.flowing { animation: none; }
 
 /* The update notice: the same band, in the accent colour, not the warning one. */
 .trial.update {
@@ -561,15 +561,19 @@ h3.sec { margin: 24px 0 0; padding-bottom: 6px; color: var(--ink-2); font-size: 
    One row, the way light and frames travel: fibre, the stick (optics, the
    SoC, the host lane), the router. The fibre is the one coloured line, in
    the jacket yellow; inside the stick the links are dashed, electrical. */
+/* The link check in one plain sentence, above the stick (status.js, headline). */
+.verdict { display: flex; align-items: center; gap: 10px; margin: 4px 0 8px; font-size: 18px; font-weight: 600; }
+.verdict:empty { margin: 0; }
+.verdict .dot { flex: none; width: 10px; height: 10px; }
 .overview { display: grid; grid-template-columns: auto 96px minmax(0, 1fr) 32px auto; align-items: center; margin: 4px 0 24px; }
 .ov-part { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 10px 12px;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); color: var(--ink);
   font: inherit; text-align: left; cursor: pointer; }
 .ov-part:hover { border-color: var(--line-2); }
 .ov-name { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.ov-part .dot.ok { background: var(--green); }
-.ov-part .dot.warn { background: var(--yellow); }
-.ov-part .dot.bad { background: var(--red); }
+.dot.ok { background: var(--green); }
+.dot.warn { background: var(--yellow); }
+.dot.bad { background: var(--red); }
 .ov-val { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* The figure of a part, larger than what says more about it. One that is
    longer than its part wraps inside it. */
@@ -592,11 +596,15 @@ h3.sec { margin: 24px 0 0; padding-bottom: 6px; color: var(--ink-2); font-size: 
 /* In service: light runs down the fibre towards the stick. */
 .ov-glass.flowing {
   background: repeating-linear-gradient(90deg, var(--yellow) 0 10px, color-mix(in srgb, var(--yellow) 45%, transparent) 10px 16px) 0 0 / 16px 100%;
-  animation: ov-flow 0.9s linear infinite;
+  animation: ov-flow var(--ov-dur, 0.9s) linear infinite;
 }
+/* With traffic, the host pins move too, towards the router (overview.js, pace). */
+.ov-pins.flowing { background-size: 9px 100%; animation: ov-pins var(--ov-dur, 0.9s) linear infinite; }
+@keyframes ov-pins { to { background-position: 9px 0; } }
+@keyframes ov-pins-down { to { background-position: 0 9px; } }
 @keyframes ov-flow { from { background-position: 0 0; } to { background-position: 16px 0; } }
 @keyframes ov-flow-down { from { background-position: 0 0; } to { background-position: 0 16px; } }
-@media (prefers-reduced-motion: reduce) { .ov-glass.flowing { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ov-glass.flowing, .ov-pins.flowing { animation: none; } }
 /* The two rates of the fibre side, on the line: down above it, up below. */
 .ov-rate { position: absolute; left: 0; right: 0; text-align: center; font: 700 11px var(--readout); color: var(--ink-2); white-space: nowrap; }
 .ov-rate.down { bottom: 8px; }
@@ -625,6 +633,7 @@ h3.sec { margin: 24px 0 0; padding-bottom: 6px; color: var(--ink-2); font-size: 
   .ov-rate.up { top: 20px; }
   .ov-pins { width: 2px; height: 24px; justify-self: start; margin-left: 29px;
     background: repeating-linear-gradient(180deg, var(--ink-3) 0 5px, transparent 5px 9px); }
+  .ov-pins.flowing { background-size: 100% 9px; animation-name: ov-pins-down; }
   .ov-stick { grid-template-columns: minmax(0, 1fr); }
   .ov-soc { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ov-soc::before, .ov-soc::after { top: auto; left: 28px; right: auto; width: 2px; height: 22px;

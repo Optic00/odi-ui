@@ -362,6 +362,36 @@ function upFor(sec) {
   return d ? `${d} d ${h} h ${m} min` : h ? `${h} h ${m} min` : `${m} min`;
 }
 
+/*
+ * Why the previous boot ended, from /api/status prev_boot: the odi-oss
+ * kernel's "previous boot:" line, which ends in reason=<name>[:<detail>]
+ * (odi_ramlog.c; the names are in odi-oss docs/HACKING.md). Returns
+ * [text, class], or null without the member. A name this page does not know
+ * is shown as the kernel wrote it.
+ */
+const REASONS = {
+  power: ['Power loss or cold start', ''],
+  reboot: ['Restart', ''],
+  halt: ['Halt', ''],
+  poweroff: ['Power off', ''],
+  panic: ['Kernel panic', 'bad'],
+  oops: ['Kernel oops', 'bad'],
+  wdt_client: ['Watchdog: a service stopped answering', 'warn'],
+  wdt_mem: ['Watchdog: memory ran low', 'warn'],
+  wdt_userland: ['Watchdog: the boot was not confirmed', 'warn'],
+  wdt_cpu_rx: ['Watchdog: the CPU port stopped receiving', 'warn'],
+  unknown: ['Unknown: a hang or an older image', 'warn'],
+};
+
+function prevBoot(line) {
+  const m = /(?:^| )reason=([a-z0-9_]+)(?::([\x21-\x7e]+))?\s*$/.exec(line || '');
+  if (!m) return null;
+  const r = REASONS[m[1]];
+  if (!r) return [m[2] ? `${m[1]}: ${m[2]}` : m[1], 'warn'];
+  if (m[1] === 'wdt_client' && m[2]) return [`Watchdog: ${m[2]} stopped answering`, 'warn'];
+  return r;
+}
+
 /* The header bar on every view: only the critical alarm raises it. */
 function chipBar(chip) {
   const bar = $('#chipbanner');
@@ -548,10 +578,16 @@ function renderStatus(raw, chip, st) {
   /* The SoC is the stick, not the optics module, so it is not in the
      transceiver rows beside its alarms. */
   const up = upFor(st && st.uptime);
-  $('#stickblock').hidden = !chip && up === null;
+  const prev = prevBoot(st && st.prev_boot);
+  $('#stickblock').hidden = !chip && up === null && !prev;
   const stick = $('#stick');
   stick.textContent = '';
   if (up !== null) stick.append(...stat('Uptime', up, 'num'));
+  if (prev) {
+    const [k, v] = stat('Last restart', prev[0], prev[1]);
+    v.title = st.prev_boot;
+    stick.append(k, v);
+  }
   if (chip) stick.append(...stat('Chip temperature (SoC)', ...chipRow(chip)));
   chipBar(chip);
   if (asserted.length) {
@@ -627,4 +663,4 @@ function renderLinkCheck(r) {
   p.textContent = r.finding.text;
 }
 
-export { renderStatus, renderLinkCheck, renderPon, sections, upFor, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };
+export { renderStatus, renderLinkCheck, renderPon, sections, upFor, prevBoot, lineFacts, ponLoad, pathLoss, eqd, OPTICS, STATES, tight };

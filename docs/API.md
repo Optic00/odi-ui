@@ -243,6 +243,11 @@ Refused regardless of schema: `LAN_SDS_MODE`, `LAN_SPEED_MODE`, `FIBER_MODE`.
                                           `host_link` (odi_switch host_link, "0" or "1") and
                                           `host_mode` (/var/run/host-serdes "running=").
                                           `uptime`: the whole seconds of /proc/uptime
+                                          `prev_boot`: why the previous boot ended, the
+                                          "previous boot: " line of /proc/odi_ramlog_prev
+                                          (odi-oss, ends in reason=<name>[:<detail>],
+                                          reason=power after a power cut), read once per
+                                          confd start; missing on a stock slot
                                           For the shared PON section, from one read of
                                           /proc/odi_gpon/counters (odi-oss), so they belong
                                           to one driver sample: `ds_superframe`

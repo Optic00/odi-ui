@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Status: the Stick block shows why the stick last restarted, from the
+  reason the odi-oss kernel keeps in RAM across a watchdog reset: power loss,
+  restart, kernel panic, or which watchdog rule fired (for a missed deadline,
+  the service). Hover shows the kernel's whole line. confd reads it once per
+  start and writes nothing. A stock slot has no such file and shows no row.
 - Sign-in: a *Forgot your password?* section explains the odi-oss safe mode:
   five short power-ups, or three when the host port runs 2500BASE-X or
   HiSGMII or has auto-negotiation off, then sign in with `admin` / `admin`.

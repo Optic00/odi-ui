@@ -366,6 +366,31 @@ ok(true, 'renderStatus runs against a diag capture');
   renderStatus('', { celsius: 52.4 }, { uptime: '14105' });
   ok(textOf(doc.querySelector('#stick')) === 'Uptime3 h 55 minChip temperature (SoC)52.4 \u00b0C',
      'uptime: first in the Stick block, the chip temperature under it');
+}
+
+/* --- why the previous boot ended (odi-oss /proc/odi_ramlog_prev) --------- */
+{
+  const { renderStatus, prevBoot } = await import(join(root, 'web', 'status.js'));
+  const pb = (r) => `boot=30 slot=1 build=v1.19.0 crumb=TICK/15028 reason=${r}`;
+  ok(prevBoot(undefined) === null && prevBoot('') === null && prevBoot('boot=3 slot=1') === null,
+     'prev boot: no member, or a line without reason=, is no row');
+  ok(prevBoot('none (page A magic 0x00000000, page B magic 0x00000000) reason=power')[0] === 'Power loss or cold start',
+     'prev boot: DRAM lost its contents reads as a power loss');
+  ok(prevBoot(pb('reboot'))[0] === 'Restart' && prevBoot(pb('reboot'))[1] === '',
+     'prev boot: a reboot command is plain, not a warning');
+  ok(prevBoot(pb('wdt_client:omcid')).join('|') === 'Watchdog: omcid stopped answering|warn',
+     'prev boot: a watchdog client names the service that missed its deadline');
+  ok(prevBoot(pb('wdt_userland')).join('|') === 'Watchdog: the boot was not confirmed|warn'
+     && prevBoot(pb('panic'))[1] === 'bad' && prevBoot(pb('unknown'))[1] === 'warn',
+     'prev boot: watchdog and unknown warn, panic is bad');
+  ok(prevBoot(pb('wdt_future:x')).join('|') === 'wdt_future: x|warn',
+     'prev boot: a name this page does not know is shown as the kernel wrote it');
+  renderStatus('', null, { prev_boot: pb('wdt_mem') });
+  const row = doc.querySelector('#stick');
+  ok(textOf(row) === 'Last restartWatchdog: memory ran low' && doc.querySelector('#stickblock').hidden === false,
+     'prev boot: alone, it still shows the Stick block');
+  renderStatus('', null, { uptime: '600', prev_boot: pb('reboot') });
+  ok(textOf(row) === 'Uptime10 minLast restartRestart', 'prev boot: under the uptime');
   const lineup = () => doc.querySelector('#lineup');
   const o5 = 'RTK.0> gpon get onu-state\n  Operation State(O5)\n';
   renderStatus(o5, null, { in_state_s: '11520' });

@@ -109,6 +109,14 @@
 #define GPON_COUNTERS     "/proc/odi_gpon/counters"
 #define ODI_SW_DEV        "/dev/odi_sw"
 #define UPTIME_FILE       "/proc/uptime"
+/*
+ * Why the previous boot ended, as the odi-oss kernel recorded it in the two
+ * DRAM pages a watchdog reset keeps (odi_ramlog.c): the "previous boot:" line
+ * ends in reason=<name>, or reason=power when DRAM lost its contents. Root
+ * only, and absent on a stock slot.
+ */
+#define RAMLOG_PREV       "/proc/odi_ramlog_prev"
+#define PREV_BOOT_MAX     200
 #define NTP_STATUS_FILE   "/tmp/ntp-status"
 /*
  * What the router says its SIP client is doing, per phone port, for omcid to

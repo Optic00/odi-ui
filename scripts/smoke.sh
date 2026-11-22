@@ -1873,6 +1873,10 @@ check "the bias current is in the batch" yes \
 	"$(err "$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/status")" 'Bias Current')"
 check "and the uptime rides along, in whole seconds" 1 \
 	"$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/status" | grep -cE '"uptime":"[0-9]+"')"
+# No /proc/odi_ramlog_prev here, as on a stock slot: no member, and the
+# status answer is still whole.
+check "without the ramlog there is no prev_boot member" 0 \
+	"$(curl -s -u "$AUTH" "http://127.0.0.1:$PORT/api/status" | grep -c '"prev_boot"')"
 check "it needs the credential" 401 \
 	"$(code "http://127.0.0.1:$PORT/api/l2")"
 # The PON load alone, for the page's one-second refresh: file reads, no diag.

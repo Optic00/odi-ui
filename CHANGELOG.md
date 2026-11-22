@@ -7,6 +7,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 - Config: `GPON_KEEP_DISABLE` shows on as the default, to match odi-oss, which now keeps an OLT Emergency Stop across reboots unless the key is `0` (AndreZiviani/odi-oss#482).
+- Status: the status poll runs one at a time. A poll that took longer than
+  the 15 s between ticks had the next one queue behind it in confd, which
+  answers one request at a time, and the link check could take its samples
+  twice and out of order. A tick that finds a poll still going is now
+  skipped. Each read the poll waits for (`/api/status` and the two OMCI reads
+  of the link check) gives up after 60 s, so one with no answer cannot stop
+  the polling for good; `get()` in `dom.js` takes an optional `timeout` for
+  that, covering headers and body. The setup wizard's marker write is no
+  longer waited for. The wizard's own 3 s status read is unchanged. `make
+  check` covers the timeout and the one-at-a-time guard.
+
+- Access: "default password" now means that no password was set: no
+  `confd.auth`, an empty one, or a safe-mode boot. A file that holds
+  `admin:admin` counts as set. One check answers `defaultauth` and every
+  route that refuses the default. While it holds, the page shows the
+  password form of System, Access and nothing else (no tab, no setup
+  wizard), and confd answers 403 to adding an SSH key and to
+  `GET /api/backup`, as it did for the VoIP secrets; all of them answer 503
+  while the file cannot be read. Saving any password, `admin` / `admin`
+  included, writes the file and opens the page. On a safe-mode boot the
+  page opens after the save (`authsaved` in `/api/firmware`), while keys
+  and the backup stay refused until the reboot, and the page says so. The
+  default-password banner and header chip are gone, and the setup wizard
+  no longer asks for the password (odi-oss#482).
+
 - Sign-in: a *Forgot your password?* section explains the odi-oss safe mode:
   five short power-ups, or three when the host port runs 2500BASE-X or
   HiSGMII or has auto-negotiation off, then sign in with `admin` / `admin`.

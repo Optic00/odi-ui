@@ -25,16 +25,18 @@
  *
  * ssh logs in as root with keys only, so the first step can also add one public
  * key through /api/sshkeys, checked by the same sshKeyProblem as System, Access
- * against the keys already installed.
+ * against the keys already installed. The admin password is not asked here:
+ * while the built-in one is in force the page is the password form of System,
+ * Access and nothing else (pwGate), so the wizard opens only after a save.
  *
- * Secrets (the PLOAM password, the LOID password, the admin password) are typed
+ * Secrets (the PLOAM password, the LOID password) are typed
  * into password fields and shown as dots in the review; a field left empty
  * keeps what the stick holds, so an untouched secret is never rewritten.
  */
 
 import { $, el } from './dom.js';
-import { S, imageAware, settingOf, vlanRisk, costBadge } from './state.js';
-import { valueProblem, passwordProblem, sshKeyProblem, snFromHex } from './validate.js';
+import { S, imageAware, settingOf, vlanRisk, costBadge, pwGate } from './state.js';
+import { valueProblem, sshKeyProblem, snFromHex } from './validate.js';
 import { withPairs, encode, applyOmci } from './save.js';
 import { renderAll } from './config.js';
 import { OPTICS, STATES, lineFacts } from './status.js';
@@ -53,8 +55,7 @@ const W = {
   open: false, auto: false, steps: [], step: '', phase: 'edit', f: {},
   key: '', keys: [],   /* the public key to add, and the lines already installed */
   keysErr: '',         /* why the installed keys could not be listed, when they could not */
-  pw: null,            /* { user, pass, again }: the admin password typed in, until it is saved */
-  pwChanged: false, timer: 0, polls: 0, autoTried: false, marking: false,
+  timer: 0, polls: 0, autoTried: false, marking: false,
   live: null, out: null, msgs: {}, keysEl: null, held: [], rereg: false,
 };
 
@@ -218,7 +219,8 @@ async function setMarker() {
 
 /* Called with every status read by app.js. */
 async function wizardSeen(facts) {
-  if (!imageAware()) return;
+  /* Not while the page is only the password form. */
+  if (!imageAware() || pwGate()) return;
   const d = decide(facts);
   if (d === 'mark' && !W.marking) {
     W.marking = true;
@@ -241,11 +243,11 @@ function showDialog(on) {
 }
 
 function openWizard(auto) {
-  if (W.open) return;
+  if (W.open || pwGate()) return;
   clearInterval(W.timer);
   Object.assign(W, {
-    open: true, auto: !!auto, phase: 'edit', f: initForm(), pw: null,
-    pwChanged: false, polls: 0, live: null, out: null, key: '', keys: [], keysErr: '', keysEl: null,
+    open: true, auto: !!auto, phase: 'edit', f: initForm(),
+    polls: 0, live: null, out: null, key: '', keys: [], keysErr: '', keysEl: null,
     steps: ['access', 'isp', 'vlan', 'review'],
   });
   showDialog(true);
@@ -253,15 +255,13 @@ function openWizard(auto) {
   go(W.steps[0]);
 }
 
-/* Every way out: the marker first. A changed admin password needs no sign-out:
-   confd keeps this browser's session and ends every other one. */
+/* Every way out: the marker first. */
 async function exitWizard() {
   if (!W.open) return;
   clearInterval(W.timer);
   W.timer = 0;
   await setMarker();
   W.open = false;
-  W.pw = null;
   W.live = null;
   showDialog(false);
 }
@@ -344,25 +344,14 @@ function showTick(input) {
 }
 
 function stepAccess(body) {
+  /* Past the gate with the default still in force: a safe-mode boot after a
+     save. confd adds no key for the rest of that boot. */
   if (S.FW.defaultauth) {
-    W.pw = W.pw || { user: 'admin', pass: '', again: '' };
-    body.append(el('p', 'lede', 'This page still answers to the built-in admin / admin: anyone who can reach it '
-      + 'can change the line settings. Choose a password now. It is saved when you apply the setup; '
-      + 'this browser stays signed in.'));
-    const u = field('wiz-pw-user', 'Username', textInput(W.pw.user, (v) => { W.pw.user = v.trim(); }));
-    const p = field('wiz-pw-pass', 'New password', textInput(W.pw.pass, (v) => { W.pw.pass = v; }, { secret: true }),
-      '4 to 128 printable characters.');
-    const a = field('wiz-pw-again', 'Repeat the password', textInput(W.pw.again, (v) => { W.pw.again = v; }, { secret: true }));
-    W.msgs.pw = a.msg;
-    body.append(u.wrap, p.wrap, a.wrap, showTick(p.input));
-    const skip = el('button', null, 'Skip the password');
-    skip.type = 'button';
-    skip.onclick = () => { W.pw = null; go('isp'); };
-    body.append(el('p', 'callout warn', 'Without a password the stick keeps the built-in admin / admin. '
-      + 'You can set one later under System, Access.'), skip);
-  } else {
-    body.append(el('p', 'lede', 'This page already has its own password. You can add an SSH key below, or go on.'));
+    body.append(el('p', 'lede', 'This is a safe-mode boot: it runs on the built-in admin / admin until the '
+      + 'reboot, so it adds no SSH key. Add one after the reboot under System, Access, or go on.'));
+    return;
   }
+  body.append(el('p', 'lede', 'This page has its own password. You can add an SSH key below, or go on.'));
   body.append(el('h3', 'sec', 'SSH key'));
   body.append(el('p', 'help', 'ssh logs in as root with keys only; there is no ssh password. Paste a public key '
     + '(the contents of a .pub file) to add it, or leave this empty.'));
@@ -469,14 +458,10 @@ function stepVlan(body) {
 
 function stepReview(body) {
   const { pairs, rows } = planChanges(W.f);
-  body.append(el('p', 'lede', rows.length || W.pw || W.key
+  body.append(el('p', 'lede', rows.length || W.key
     ? 'These are the changes. Nothing is written until you apply.'
     : 'Nothing differs from what the stick holds, so there is nothing to write.'));
   const list = el('dl', 'wiz-review');
-  if (W.pw) {
-    list.append(el('dt', null, 'Admin password'),
-      el('dd', null, 'built-in → •••••• (hidden), user ' + W.pw.user));
-  }
   if (W.key) list.append(el('dt', null, 'SSH key'), el('dd', null, 'add ' + keyLabel(W.key)));
   for (const r of rows) {
     const dt = el('dt', null, r.label + ' ');
@@ -531,16 +516,8 @@ function paint() {
   const set = (id, text) => { if (W.msgs[id]) W.msgs[id].textContent = text || ''; };
   let bad = null;
   if (W.step === 'access') {
-    const keyBad = W.key ? sshKeyProblem(W.key, W.keys) : null;
-    set('key', keyBad);
-    let pwBad = null;
-    if (S.FW.defaultauth) {
-      const pw = W.pw || {};
-      const typed = pw.pass || pw.again;
-      pwBad = typed ? passwordProblem(pw.user, pw.pass, pw.again) : 'Choose a password, or skip it.';
-      set('pw', typed ? pwBad : '');
-    }
-    bad = pwBad || keyBad;
+    bad = W.key ? sshKeyProblem(W.key, W.keys) : null;
+    set('key', bad);
   } else if (W.step === 'isp' || W.step === 'vlan') {
     const p = problems(W.f);
     for (const k of Object.keys(p)) set(k, p[k]);
@@ -551,7 +528,7 @@ function paint() {
     next.textContent = 'Finish';
     next.disabled = false;
   } else if (W.step === 'review') {
-    next.textContent = planChanges(W.f).pairs.length || W.pw || W.key ? 'Apply' : 'Finish';
+    next.textContent = planChanges(W.f).pairs.length || W.key ? 'Apply' : 'Finish';
     next.disabled = W.phase === 'applying';
   } else {
     next.textContent = 'Next';
@@ -568,12 +545,12 @@ async function next() {
   if (W.phase === 'live' || W.phase === 'pending') { await exitWizard(); return; }
   if (W.step !== 'review') { go(W.steps[W.steps.indexOf(W.step) + 1]); return; }
   const { pairs } = planChanges(W.f);
-  if (!pairs.length && !W.pw && !W.key) { await exitWizard(); return; }
+  if (!pairs.length && !W.key) { await exitWizard(); return; }
   await apply(pairs);
 }
 
 /*
- * The write, the apply, the password, the marker, then the live view. Values
+ * The key, the write, the apply, the marker, then the live view. Values
  * are never printed: a result line names the key and says saved or why not.
  */
 async function apply(pairs) {
@@ -585,6 +562,14 @@ async function apply(pairs) {
   W.rereg = false;
   paint();
   try {
+    /* The key first, before anything that changes the line: a refusal
+       stops the setup with nothing applied, so Apply can simply be pressed
+       again. */
+    if (W.key && !(await addKey(out))) {
+      W.phase = 'edit';
+      paint();
+      return;
+    }
     if (pairs.length) {
       const r = await post('/api/config', writeBody(pairs));
       if (r.status === 401) {
@@ -612,8 +597,7 @@ async function apply(pairs) {
            VLAN keys alone go as live, as on the Config page. Anything but
            an apply that worked leaves the wizard saying so, with the Apply
            now that applyOmci offers; once that works, the live view. */
-        /* Its Apply now (or Try again) waits until the key, the password
-           and the marker are done: started before, its result would land
+        /* Its Apply now (or Try again) waits until the marker is done: started before, its result would land
            while the wizard still says "Saved, not applied". A failed one
            offers itself again, so there is always a way on. */
         const done = await applyOmci(out, Boolean(res.interrupts), res.interrupts === false, {
@@ -628,8 +612,6 @@ async function apply(pairs) {
         W.rereg = res.interrupts !== false || done === 'reregistered';
       }
     }
-    if (W.key) await addKey(out);
-    if (W.pw) await savePassword(out);
     await setMarker();
   } catch (e) {
     out.append(el('div', 'bad', String(e.message || e)));
@@ -657,27 +639,17 @@ function startLive() {
   pollLive();
 }
 
-/* One public key, through the route System, Access uses (it refuses a duplicate). */
+/* One public key, through the route System, Access uses (it refuses a
+   duplicate). True once it is added; the key is then no longer pending. */
 async function addKey(out) {
   const bad = sshKeyProblem(W.key, W.keys);
-  if (bad) { out.append(el('div', 'bad', 'SSH key: ' + bad)); return; }
+  if (bad) { out.append(el('div', 'bad', 'SSH key: ' + bad)); return false; }
   const j = await (await post('/api/sshkeys', new URLSearchParams({ key: W.key }).toString())).json();
-  if (!j.ok) { out.append(el('div', 'bad', 'SSH key: ' + (j.error || 'refused'))); return; }
+  if (!j.ok) { out.append(el('div', 'bad', 'SSH key: ' + (j.error || 'refused'))); return false; }
   W.keys.push(W.key);
+  W.key = '';
   out.append(el('div', 'good', 'SSH key: added. dropbear reads the file on every login.'));
-}
-
-/* The admin password, last. This browser's session survives the change; every
-   other browser signed in to the page is signed out by confd. */
-async function savePassword(out) {
-  const { user, pass, again } = W.pw;
-  const bad = passwordProblem(user, pass, again);
-  if (bad) { out.append(el('div', 'bad', 'Admin password: ' + bad)); return; }
-  const j = await (await post('/api/password', new URLSearchParams({ user, password: pass }).toString())).json();
-  if (!j.ok) { out.append(el('div', 'bad', 'Admin password: ' + (j.error || 'refused'))); return; }
-  W.pwChanged = true;
-  W.pw = { user, pass: '', again: '' };
-  out.append(el('div', 'good', 'Admin password: saved. Other browsers signed in to this page are signed out.'));
+  return true;
 }
 
 /* ------------------------------------------------------------ live view */

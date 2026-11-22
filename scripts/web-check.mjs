@@ -84,6 +84,7 @@ const doc = {
   dispatchEvent: () => true,
 };
 doc.documentElement = { dataset: {} };
+doc.body = new El('body');
 globalThis.document = doc;
 globalThis.Event = class { constructor(t) { this.type = t; } };
 globalThis.CustomEvent = globalThis.Event;
@@ -2907,6 +2908,9 @@ ok(inputsOf('#sections') > 100,
      writes (the marker) until it resolves. */
   let APPLY = { live: null, full: null };
   let GATE = null;
+  /* The side of confd: DEFAULT while admin:admin is in force (it then adds
+     no key, as confd does). */
+  let DEFAULT = false;
   globalThis.fetch = async (path, init = {}) => {
     const [key] = String(path).split('?');
     const method = init.method || 'GET';
@@ -2934,11 +2938,16 @@ ok(inputsOf('#sections') > 100,
       const a = (live ? APPLY.live : APPLY.full) || { ok: true, output: 'secret-looking output' };
       return ans(a, a.status || 200);
     }
-    if (key === '/api/password') return ans({ ok: true });
+    if (key === '/api/password') {
+      DEFAULT = false;
+      return ans({ ok: true });
+    }
+    if (key === '/api/firmware' && method === 'GET') return ans({ ...S.FW, defaultauth: DEFAULT });
     if (key === '/api/sshkeys' && method === 'GET' && INSTALLED === null) return ans({ ok: false, error: 'authorized_keys is larger than confd can hold (4 KB); edit it over ssh' });
     if (key === '/api/sshkeys' && method === 'GET') return ans({ path: 'x', keys: INSTALLED.map((line, i) => ({ i, line })) });
     if (key === '/api/sshkeys') {
       const line = new URLSearchParams(body).get('key');
+      if (DEFAULT) return ans({ ok: false, error: 'refused: the built-in admin:admin is in force (no password was set, or this is a safe-mode boot). Set a password under System, Access, or reboot out of the safe mode.' }, 403);
       if (INSTALLED.includes(line)) return ans({ ok: false, error: 'that key is already in the file' });
       INSTALLED.push(line);
       return ans({ ok: true });
@@ -2955,9 +2964,10 @@ ok(inputsOf('#sections') > 100,
     APPLY = { live: null, full: null };
     GATE = null;
     S.FW = { switches: { 'omci-identity.on': false, 'confd.setup': false }, defaultauth: false, ...fw };
+    DEFAULT = S.FW.defaultauth;
     S.VALUES = { ...HELD };
     S.SETTINGS = Object.fromEntries(SETT.map((r) => [r.name, r]));
-    Object.assign(W, { open: false, autoTried: false, marking: false, pwChanged: false, phase: 'edit' });
+    Object.assign(W, { open: false, autoTried: false, marking: false, phase: 'edit' });
   };
   const all = (n, pred, out = []) => {
     if (pred(n)) out.push(n);
@@ -3003,7 +3013,12 @@ ok(inputsOf('#sections') > 100,
   await wz.exitWizard();
   reset({ defaultauth: true });
   await wz.wizardSeen(L('O1', '-18.4', false));
-  ok(title() === 'Admin access' && byId('wiz-pw-pass'), 'with the default password the access step asks for one');
+  wz.openWizard(false);
+  ok(!wz.isOpen() && !W.autoTried, 'no password set yet: the wizard stays shut, also from Setup, and opens after the save');
+  reset({ defaultauth: true, authsaved: true });
+  await wz.wizardSeen(L('O1', '-18.4', false));
+  ok(title() === 'Admin access' && !byId('wiz-pw-pass') && !byId('wiz-sshkey') && /adds no SSH key/.test(body()),
+     'a safe-mode boot after the save: the access step asks for no password and offers no key');
   await wz.exitWizard();
   reset();
   S.SETTINGS = {};
@@ -3029,7 +3044,7 @@ ok(inputsOf('#sections') > 100,
     }
   }
   /* the Skip button exists on every step and has the documented label */
-  reset({ defaultauth: true });
+  reset();
   wz.openWizard(true);
   const seen = [];
   for (let i = 0; i < 4; i++) {
@@ -3276,33 +3291,33 @@ ok(inputsOf('#sections') > 100,
   ok(!posts('/api/config').length && sw['confd.setup'] === true && !wz.isOpen(),
      'a legacy stick can review and leave: nothing written but the marker');
 
-  /* the admin password: saved last, with the new credential, then a sign-out */
-  reset({ defaultauth: true });
+  /* the gate, as a pure decision: the page is the password form until a save */
+  const { pwGate } = await import(join(root, 'web', 'state.js'));
+  ok(pwGate({ defaultauth: true }) && !pwGate({ defaultauth: true, authsaved: true }) && !pwGate({ defaultauth: false })
+     && !pwGate({}) && !pwGate(null),
+     'gate: only the default with nothing saved yet; a save opens it, a safe-mode boot included');
+  {
+    const css = readFileSync(join(root, 'web', 'style.css'), 'utf8');
+    ok(/id="pw-block"/.test(html) && /id="pw-gate" class="callout warn" hidden/.test(html)
+       && /body\.pwgate \.tabs, body\.pwgate \.subtabs, body\.pwgate #s-access > \.block:not\(#pw-block\)/.test(css),
+       'gate: the page hides every tab and every other block of System, Access');
+    ok(!/id="defaultauth"/.test(html) && !/id="authchip"/.test(html),
+       'gate: no second warning about the default password beside it');
+    ok(/id="reset-locked"/.test(html) && /id="backup-plain-help"/.test(html)
+       && /gives no backup/.test(html.replace(/\s+/g, ' ')),
+       'locked past the gate: the reset says why it is off, the plain-file line goes, the safe-mode help names the backup');
+  }
+  /* a key the daemon refuses stops it too */
+  reset();
+  DEFAULT = true;   /* the page thought otherwise (a safe-mode boot); the daemon decides */
   wz.openWizard(true);
-  type('wiz-pw-pass', 'pa55word');
-  type('wiz-pw-again', 'pa55wor');
-  ok(doc.querySelector('#wizard-next').disabled === true && /not the same/.test(byId('wiz-pw-again-msg').textContent),
-     'password: a mismatch blocks Next');
-  type('wiz-pw-again', 'pa55word');
-  ok(doc.querySelector('#wizard-next').disabled === false, 'password: matching passwords allow Next');
+  await tick();
+  type('wiz-sshkey', KEY2);
   await wz.next(); await wz.next(); await wz.next();
-  ok(!/pa55word/.test(body()) && /Admin password/.test(body()), 'password: the review shows it as dots');
   await click('#wizard-next');
-  const pc = posts('/api/password');
-  ok(pc.length === 1 && posts('/api/config').length === 0, 'password: with nothing else to write, only the password is saved');
-  ok(W.pwChanged && calls.filter((c) => c.key === '/api/status').length > 0
-     && calls.every((c) => c.auth === undefined),
-     'password: the live view goes on with the session, no credential of its own');
-  const keepLoc = globalThis.location.href;
-  await wz.exitWizard();
-  ok(globalThis.location.href === keepLoc, 'password: closing does not sign out (the session survives the change)');
-  reset({ defaultauth: true });
-  wz.openWizard(true);
-  const skipPw = all(doc.querySelector('#wizard-body'), (n) => n.tagName === 'button' && n.textContent === 'Skip the password')[0];
-  ok(skipPw && /built-in admin/.test(body()), 'password: skipping the step is offered, with a warning');
-  skipPw.onclick();
-  ok(title() === 'Your ISP login' && W.pw === null, 'password: skipping goes on to the ISP step and keeps nothing');
-  await wz.exitWizard();
+  ok(posts('/api/sshkeys').length === 1 && !INSTALLED.includes(KEY2) && !posts('/api/config').length
+     && sw['confd.setup'] !== true && W.phase === 'edit' && /SSH key: refused/.test(body()),
+     'key refused: no config write, no marker, the refusal shown');
 
   /* the SSH key: shown against what is installed, checked like System, Access, added through /api/sshkeys */
   reset();
@@ -3773,6 +3788,68 @@ ok(githubCalls.length === 0, 'updates: a stick running a non-release image never
   ok(!Ed.has('VLAN_MANU_TAG_VID') && Ed.get('LAN_IP_ADDR') === '10.0.0.2',
      'undo: drops this edit and keeps the others');
   Ed.clear();
+}
+
+/* --- get() with a timeout: a request with no answer gives up ------------- */
+{
+  const { get } = await import(join(root, 'web', 'dom.js'));
+  const keep = globalThis.fetch;
+  let seen = null;
+  globalThis.fetch = (path, opts) => {
+    seen = opts;
+    return new Promise((resolve, reject) => {
+      opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+  };
+  let why = '';
+  try { await get('/api/status', { timeout: 20 }); } catch (e) { why = e.message; }
+  ok(why === '/api/status -> no answer in 0 s' && seen.signal.aborted,
+     'get: a request with no answer is aborted after the timeout and says so');
+
+  /* Headers in time, then a body that never comes: still given up. */
+  globalThis.fetch = async (path, opts) => ({
+    ok: true,
+    json: () => new Promise((resolve, reject) => {
+      opts.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }),
+  });
+  why = '';
+  try { await get('/api/status', { timeout: 20 }); } catch (e) { why = e.message; }
+  ok(why === '/api/status -> no answer in 0 s', 'get: a body that stops coming is given up too');
+
+  globalThis.fetch = async (path, opts) => { seen = opts; return { ok: true, json: async () => ({ fine: 1 }) }; };
+  const quick = await get('/api/status', { timeout: 60000 });
+  ok(quick.fine === 1 && !seen.signal.aborted, 'get: an answer in time is returned as before');
+  await get('/api/values');
+  ok(seen === undefined, 'get: without a timeout the request is made as before');
+  globalThis.fetch = keep;
+}
+
+/* --- the status poll: one at a time ------------------------------------ */
+{
+  const { oneAtATime } = await import(join(root, 'web', 'dom.js'));
+  let calls = 0, release;
+  const poll = oneAtATime(() => { calls++; return new Promise((r) => { release = r; }); });
+  const first = poll();
+  poll();
+  ok(calls === 1, 'poll: a tick while a poll is still going starts no second one');
+  release(7);
+  ok(await first === 7, 'poll: the running poll still answers');
+  poll();
+  ok(calls === 2, 'poll: once it ended, the next tick polls again');
+  release();
+  const failing = oneAtATime(async () => { calls++; throw new Error('x'); });
+  await failing().catch(() => {});
+  await failing().catch(() => {});
+  ok(calls === 4, 'poll: a poll that failed does not block the next one');
+
+  /* app.js is not loaded here (it wires the whole page), so its source is
+     held to the shape the cases above test. */
+  const app = readFileSync(join(root, 'web', 'app.js'), 'utf8');
+  ok(/const refresh = oneAtATime\(/.test(app)
+     && /get\('\/api\/status', \{ timeout: POLL_READ_MS \}\)/.test(app)
+     && (app.match(/get\('\/api\/omci\?cmd=[^']*', \{ timeout: POLL_READ_MS \}\)/g) || []).length === 2,
+     'poll: refresh() runs one at a time and every read it waits for has a timeout');
 }
 
 console.log(failed ? `\n${failed} failed` : '\nweb modules ok');

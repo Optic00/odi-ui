@@ -22,16 +22,38 @@ function fail(e) {
 
 /* The server says what may be kept: the image files come with a tag and are
    revalidated (a 304 when unchanged), and what the device holds is no-store.
-   Forcing no-store here threw the tags away. */
-async function get(path) {
-  const r = await fetch(path);
-  if (!r.ok) {
-    /* A refusal says why in {"error": ...}: show that, not only the status. */
-    let why = '';
-    try { why = (await r.json()).error || ''; } catch (e) { /* not JSON */ }
-    throw new Error(path + ' -> HTTP ' + r.status + (why ? ': ' + why : ''));
+   Forcing no-store here threw the tags away.
+   `timeout` (ms) gives up on a request whose answer, headers or body, does
+   not arrive in time, so a caller that waits for it is not stuck for good. */
+async function get(path, { timeout = 0 } = {}) {
+  const ctl = timeout ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
+  try {
+    const r = await fetch(path, ctl ? { signal: ctl.signal } : undefined);
+    if (!r.ok) {
+      /* A refusal says why in {"error": ...}: show that, not only the status. */
+      let why = '';
+      try { why = (await r.json()).error || ''; } catch (e) { /* not JSON */ }
+      throw new Error(path + ' -> HTTP ' + r.status + (why ? ': ' + why : ''));
+    }
+    return await r.json();
+  } catch (e) {
+    if (ctl && ctl.signal.aborted) throw new Error(path + ' -> no answer in ' + Math.round(timeout / 1000) + ' s');
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return r.json();
+}
+
+/* `fn` once at a time: a call while one is still running does nothing and
+   returns undefined. For polls, where the next tick is the retry. */
+function oneAtATime(fn) {
+  let busy = false;
+  return async (...args) => {
+    if (busy) return undefined;
+    busy = true;
+    try { return await fn(...args); } finally { busy = false; }
+  };
 }
 
 /*
@@ -190,4 +212,4 @@ async function once(btn, fn) {
   return true;
 }
 
-export { $, el, fail, get, bytes, ask, once, currentTheme, setTheme, wireTheme, createHelpToggle, setFullHelp, wireHelp, THEME_KEY, HELP_KEY };
+export { $, el, fail, get, oneAtATime, bytes, ask, once, currentTheme, setTheme, wireTheme, createHelpToggle, setFullHelp, wireHelp, THEME_KEY, HELP_KEY };

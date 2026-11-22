@@ -154,9 +154,8 @@ dialogs. A subtab label carries the number of unsaved changes on it.
 
 ### The banners
 
-The default-credential notice is loud on Status and System &rsaquo; Access,
-where it is about what you are looking at, and a small *Default password*
-chip in the header on every other view.
+While no password is set the page is the password form and nothing else
+(see "Saying so is what makes it defensible"), so there is no banner for it.
 
 A **trial boot** is a different thing and looks it: a full-width band in the
 sticky header, on every view, for as long as U-Boot would boot another
@@ -1021,16 +1020,30 @@ with the new one. The page says so.
 
 ### Saying so is what makes it defensible
 
-`/api/firmware` reports `defaultauth`, and the page says so until the
-credential is no longer the default one: a banner with a button that lands on
-the field, on Status and on System &rsaquo; Access, and a *Default password*
-chip in the header on every other view.
+`/api/firmware` reports `defaultauth`, and while it is true the page shows
+the password block of System &rsaquo; Access and nothing else: no tab, no
+setup wizard, no save bar. Saving a password opens the rest.
 
-Note *default one*, not *no file*: a file containing `admin:admin` leaves you on
-the password everybody knows while making the warning disappear, which is the
-worst of both. The check compares the credential in force against the built-in
-one, so writing the default into the file changes nothing about what the page
-tells you.
+"Default" means that no credential was set: there is no `confd.auth`, or it
+is empty, or the boot is a safe-mode boot, which does not read it. It does not
+mean a particular password. A file somebody wrote counts as theirs, even one
+that says `admin:admin`: saving `admin` / `admin` from the form writes the file
+(the skip of a credential saved again compares with the file, and there is
+none) and opens the page. One check, `auth_state()` in `http.c`, answers
+`defaultauth` and every route that refuses the default (adding an SSH key, the
+backup, the VoIP secrets and the VoIP status report), so the page and the
+server cannot disagree. A file that is there and cannot be read is neither:
+nobody signs in, and those routes answer `503`, since a browser signed in
+before still has its session and must not pass for the owner.
+
+A safe-mode boot keeps the default in force until the reboot, whatever is
+saved. There `authsaved` turns true at the first save and the page opens, so
+firmware upload stays reachable in the recovery boot; adding a key and the
+backup (and so *Back up, then reset*) stay refused for the whole boot, and the
+page says so beside each.
+
+Earlier releases compared the content of the file with the default, so
+`admin:admin` in the file kept the warning while the routes let it through.
 
 ### Every request is checked, which the stock UI cannot say
 
@@ -1278,12 +1291,12 @@ button in the header or by the page itself, and it asks the four things a new
 stick needs, in order, in simple mode only (everything else stays in Config,
 and *Skip, I'll use Config* is on every step):
 
-1. **Admin access**: the web password and, optionally, one SSH key. The
-   password block shows only while the built-in `admin` / `admin` is in force:
-   the same `/api/password` and `passwordProblem` as System, Access, saved last,
-   after the line settings, because the browser keeps sending the old credential
-   (from then on the wizard sends the new one itself, and closing it signs out so
-   the browser asks for it); *Skip the password* is offered with the warning.
+1. **Admin access**: optionally, one SSH key. The web password is not asked
+   here: while none is set the page is the password form alone and the wizard
+   does not open, also from *Setup*. On a safe-mode boot after a save, where
+   confd adds no key until the reboot, the step says so and offers no field.
+   The key is added first, before the line settings, and a refusal stops the
+   apply with nothing written, so Apply can be pressed again.
    The key goes through `POST /api/sshkeys` with the same `sshKeyProblem` as
    System, Access, checked against the keys already installed (`GET
    /api/sshkeys`), which the step shows as a count and comments so a stick that

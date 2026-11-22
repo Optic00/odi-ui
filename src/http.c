@@ -598,22 +598,74 @@ static long load_credential(int *is_default)
 }
 
 /*
- * Whether the credential in force IS the built-in default.
+ * Which credential is in force, for every caller that asks: the banner and
+ * the page through auth_is_default(), the VoIP secrets, the SSH keys and the
+ * backup. One check, so the page and the routes cannot disagree.
  *
- * Deliberately not "is the file missing": a file containing admin:admin leaves
- * you on the default password while making the warning go away, which is the
- * worst of both. The question the page needs answered is "is this stick on the
- * credential everybody knows", and that is this.
+ *    1  a credential somebody set: confd.auth has content, admin:admin
+ *       included. What is in the file is not judged, only that it is there.
+ *    0  the built-in default: no file or an empty one, or a safe-mode boot,
+ *       which does not read the file.
+ *   -1  the file is there and cannot be read. A browser signed in before the
+ *       read started failing still has its session, so this is not taken for
+ *       a credential of the owner.
  */
+int auth_state(void)
+{
+	int def = 0;
+
+	if (load_credential(&def) < 0)
+		return -1;
+	return def ? 0 : 1;
+}
+
 int auth_is_default(void)
 {
-	long want = load_credential(0);
-	unsigned long i;
+	return auth_state() == 0;
+}
 
-	for (i = 0; DEFAULT_AUTH[i]; i++)
-		if ((long)i >= want || credbuf[i] != DEFAULT_AUTH[i])
-			return 0;
-	return want == (long)i;
+/*
+ * For the routes that only a credential somebody set may use: adding an SSH
+ * key, the backup and the VoIP secrets. Answers the refusal and returns 1
+ * unless auth_state() is 1; `json` picks the body the route speaks.
+ */
+int refuse_unless_set(int fd, int json)
+{
+	switch (auth_state()) {
+	case 1:
+		return 0;
+	case 0:
+		respond(fd, "403 Forbidden", json ? "application/json" : "text/plain", 0);
+		put_fd(fd, json ? "{\"ok\":false,\"error\":\"" : "");
+		put_fd(fd, "refused: the built-in admin:admin is in force (no password was set, or this is "
+			   "a safe-mode boot). Set a password under System, Access, or reboot out of the "
+			   "safe mode.");
+		break;
+	default:
+		respond(fd, "503 Service Unavailable", json ? "application/json" : "text/plain", 0);
+		put_fd(fd, json ? "{\"ok\":false,\"error\":\"" : "");
+		put_fd(fd, "refused: the password file cannot be read, so it is not known whether a "
+			   "password was set");
+		break;
+	}
+	put_fd(fd, json ? "\"}" : "\n");
+	return 1;
+}
+
+/*
+ * Set once a password is saved on a safe-mode boot. That boot keeps the
+ * default in force until the reboot whatever is saved, so auth_state() stays
+ * 0, and this is what lets the page open again after the save (firmware
+ * upload has to be reachable there). The routes that refuse the default keep
+ * refusing for the whole boot. On a normal boot the saved file is what
+ * counts and this is not needed. RAM only: a restart of confd asks again,
+ * and saving the same password again answers at once.
+ */
+static int saved_now;
+
+int auth_saved(void)
+{
+	return saved_now;
 }
 
 /*
@@ -688,6 +740,8 @@ int set_credential(const char *user, const char *pass, const char **why)
 		for (k = 0; k < sizeof(cur); k++)
 			((volatile char *)cur)[k] = 0;
 		if (same) {
+			if (file_exists(SAFEMODE_FLAG))
+				saved_now = 1;
 			*why = 0;
 			return 1;
 		}
@@ -699,6 +753,8 @@ int set_credential(const char *user, const char *pass, const char **why)
 		*why = "could not write /etc/config/confd.auth";
 		return 0;
 	}
+	if (file_exists(SAFEMODE_FLAG))
+		saved_now = 1;
 	*why = 0;
 	return 1;
 }

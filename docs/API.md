@@ -162,8 +162,9 @@ Refused regardless of schema: `LAN_SDS_MODE`, `LAN_SPEED_MODE`, `FIBER_MODE`.
                                           password in clear, for a caller that repeats
                                           the admin password in the body. 403 on a wrong
                                           password (after a one-second delay) and while
-                                          the built-in admin:admin is in force, 400
-                                          without a password, 503 `{"ok":false}` and no
+                                          the built-in default is in force (see
+                                          `defaultauth`), 503 while the credential file
+                                          cannot be read, 400 without a password, 503 `{"ok":false}` and no
                                           output when the image has no omcicli.
                                           Nothing is logged and confd wipes the
                                           password and the output after answering
@@ -184,8 +185,9 @@ Refused regardless of schema: `LAN_SDS_MODE`, `LAN_SPEED_MODE`, `FIBER_MODE`.
                                           login or password belongs in the body, and
                                           none is stored or logged. 200 `{"ok":true}`,
                                           400 for a bad port or state, 403 while the
-                                          built-in admin:admin is in force or from
-                                          another site, 401 without a credential. The
+                                          built-in default is in force or from another
+                                          site, 503 while the credential file cannot be
+                                          read, 401 without a credential. The
                                           report is kept in RAM with the stick's uptime
                                           and counts for 300 s: repeat it at least every
                                           few minutes (every 60 s is plenty), or the
@@ -323,7 +325,13 @@ Refused regardless of schema: `LAN_SDS_MODE`, `LAN_SPEED_MODE`, `FIBER_MODE`.
                                           /tmp/img.upload.tar; an upload removes
                                           /tmp/img.tar, the ssh path
     GET  /api/firmware                    partitions, versions, build manifest,
-                                          `defaultauth`, `switches`, write progress;
+                                          `defaultauth` (true when no credential was
+                                          set: no `confd.auth` or an empty one, and on a
+                                          safe-mode boot; false for a file with
+                                          content, `admin:admin` included), `authsaved`
+                                          (a password was saved on this safe-mode boot:
+                                          the page opens, the default stays in force
+                                          until the reboot), `switches`, write progress;
                                           `env` (the sw_* of `nv getenv`, empty
                                           unless that nv exited 0),
                                           `fallback` (the sw_* of `nv fallback`, the
@@ -477,7 +485,10 @@ it with the rest of `/etc/config`.
 
     GET  /api/backup                      both config stores as a file, identity included
                                           500 when a dump (`flash all cs`, `flash all hs`)
-                                          exits non-zero, prints nothing or does not fit
+                                          exits non-zero, prints nothing or does not fit;
+                                          403 while the built-in default is in force
+                                          (`defaultauth`), 503 while the credential file
+                                          cannot be read
     POST /api/reset      _confirm=reset   `flash default cs` (service store only;
                                           `hs`, the hardware identity, is not reachable here)
 
@@ -513,7 +524,10 @@ backup go through `/api/netaddr` instead when the image has the trial.
                                           sk- type, the blob is whole base64 that
                                           parses to that same type, one printable
                                           line of at most 1000 characters; a key
-                                          already in the file is refused
+                                          already in the file is refused; 403 while
+                                          the built-in default is in force
+                                          (`defaultauth`), 503 while the credential
+                                          file cannot be read
     POST /api/sshkeys    delete=<i>       rewrite the file without line i
                          [&line=<text>]   only while line i still reads <text>, as
                                           the list gave it; 409 when it does not
@@ -521,5 +535,7 @@ backup go through `/api/netaddr` instead when the image has the trial.
 A missing `authorized_keys` is an empty list. One that cannot be read, or that
 does not fit the daemon's 4 KB buffer (4094 bytes fit), answers 500 with
 `{"ok":false,"error":...}` to all three, and nothing is written: edit it over
-ssh. Send `line` with a delete: without it the number alone decides, and a
+ssh. Listing and removing keys work with the built-in credential too; adding
+one does not, since a key is root over ssh: set a password with `POST
+/api/password` first (on a safe-mode boot, after the reboot). Send `line` with a delete: without it the number alone decides, and a
 list that is out of date removes whatever key holds that line now.

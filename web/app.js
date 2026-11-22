@@ -6,8 +6,8 @@
  * any of this.
  */
 
-import { $, el, fail, get, ask, once, wireTheme, wireHelp } from './dom.js';
-import { S, EDITS } from './state.js';
+import { $, el, fail, get, oneAtATime, ask, once, wireTheme, wireHelp } from './dom.js';
+import { S, EDITS, pwGate } from './state.js';
 import { liveFibreRates } from './overview.js';
 import { renderStatus, renderLinkCheck, renderPon, sections, lineFacts } from './status.js';
 import { parsePorts } from './flow.js';
@@ -73,6 +73,10 @@ function select(list, on) {
 
 function route() {
   let h = location.hash.replace(/^#/, '');
+  /* No password set yet: the password block is the whole page, whatever the
+     address says. The address is kept for when it opens. */
+  GATED = pwGate();
+  if (GATED) h = 'system/access';
   if (OLD[h]) h = OLD[h];
   let [tab, sub] = h.split('/');
   if (!TABS.includes(tab)) tab = 'status';
@@ -86,8 +90,6 @@ function route() {
     select(subs, on);
     view = tab + '/' + on.dataset.sub;
   }
-  /* The default-password banner is loud on the two views where it is about
-     what you are looking at, and a small chip in the header everywhere else. */
   VIEW = view;
   showAuth();
   /* Asked for by toPassword(): the field can take the focus once its view shows. */
@@ -101,13 +103,30 @@ function route() {
 
 let VIEW = 'status';
 let FOCUS_PASSWORD = false;
+let GATED = false;
 function showAuth() {
-  const loud = VIEW === 'status' || VIEW === 'system/access';
-  /* A safe-mode boot answers to the default whatever was saved, and its own
-     bar already says so and leads to the password: no second warning. */
-  const on = !!(S.FW && S.FW.defaultauth) && !safeModeNow();
-  $('#defaultauth').hidden = !on || !loud;
-  $('#authchip').hidden = !on || loud;
+  const gate = pwGate();
+  document.body.classList.toggle('pwgate', gate);
+  $('#pw-gate').hidden = !gate;
+  /* What confd refuses while the default is in force (refuse_unless_set in
+     http.c): adding an SSH key and the backup, and so the reset, which
+     downloads a backup first. Only seen past the gate, so on a safe-mode
+     boot after a save, where the default stays until the reboot. */
+  const on = !!(S.FW && S.FW.defaultauth);
+  $('#sshkey-locked').hidden = !on;
+  $('#sshkey-add').disabled = on;
+  $('#backup-locked').hidden = !on;
+  $('#backup-go').disabled = on;
+  $('#backup-plain').hidden = on;
+  $('#backup-plain-help').hidden = on;
+  $('#reset-locked').hidden = !on;
+  $('#reset-go').disabled = on;
+  /* The gate came or went (a save, or the first read of the firmware): show
+     the view it allows, with the focus in the password field when it came. */
+  if (gate !== GATED) {
+    if (gate) FOCUS_PASSWORD = true;
+    route();
+  }
 }
 
 function go(view) {
@@ -167,7 +186,6 @@ function toPassword() {
   FOCUS_PASSWORD = true;
   go('system/access');
 }
-$('#gopassword').onclick = toPassword;
 $('#safe-password').onclick = toPassword;
 /* Closing or reloading the tab with edits not saved asks first: they live in
    this page only. Not during a reboot, which reloads the page on purpose. */
@@ -379,6 +397,8 @@ async function resetConfig() {
  */
 const LINK = { T: null, omci: null, gem: undefined, at: 0 };
 const LINK_OMCI_MS = 60000;
+/* What a read of the status poll may take before it is given up (see refresh). */
+const POLL_READ_MS = 60000;
 
 async function linkOmci(st, facts) {
   if (st.onu_id === undefined || !facts || facts.state !== 'O5') {
@@ -391,9 +411,9 @@ async function linkOmci(st, facts) {
   if (Date.now() - LINK.at < LINK_OMCI_MS) return;
   LINK.at = Date.now();
   try {
-    const s = await get('/api/omci?cmd=state');
+    const s = await get('/api/omci?cmd=state', { timeout: POLL_READ_MS });
     LINK.omci = s.error ? null : omciState(s.raw);
-    const m = await get('/api/omci?cmd=me&me=268');
+    const m = await get('/api/omci?cmd=me&me=268', { timeout: POLL_READ_MS });
     LINK.gem = m.ok === false || m.error ? undefined : parseOmci(m.raw || '').instances.length;
   } catch (e) {
     LINK.omci = null;
@@ -410,17 +430,26 @@ async function linkStatus(st) {
   renderLinkCheck(f ? linkCheck(f) : null);
 }
 
-async function refresh() {
+/*
+ * One status poll at a time. confd answers one request at a time, so a poll
+ * that took longer than the 15 s between ticks had the next one queue behind
+ * it, and the link check took its samples twice and out of order. A tick
+ * that finds a poll still going is skipped; the next one comes 15 s later.
+ * Each read of the poll gives up after POLL_READ_MS, so one that never gets
+ * an answer cannot stop the polling for good. The setup wizard's marker write
+ * is not waited for: it has its own guard (wizard.js) and is advisory.
+ */
+const refresh = oneAtATime(async () => {
   if (S.REBOOTING) return;
   try {
-    const st = await get('/api/status');
+    const st = await get('/api/status', { timeout: POLL_READ_MS });
     if (st.error) throw new Error(st.error);
     renderStatus(st.raw, st.chip_temp, st);
     await linkStatus(st);
     /* The setup wizard decides from the same read: open, mark, or leave alone. */
-    await wizardSeen(lineFacts(st.raw));
+    wizardSeen(lineFacts(st.raw)).catch(fail);
   } catch (e) { fail(e); }
-}
+});
 
 /*
  * The shared PON figure and the fibre-line rates, every second between the

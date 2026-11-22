@@ -227,7 +227,17 @@ function decodeMask(name, value) {
   return { n, known, unknown, covered };
 }
 
+/*
+ * Whether the page is only the password form: the built-in admin / admin is
+ * in force (no confd.auth, or a safe-mode boot) and nobody has saved a
+ * password since confd started. confd says both in /api/firmware; a safe-mode
+ * boot keeps defaultauth until the reboot, so authsaved is what opens it.
+ */
+function pwGate(fw = S.FW) {
+  return !!(fw && fw.defaultauth && !fw.authsaved);
+}
+
 export {
-  S, EDITS, provenance, applyOf, dependsUnmet, gatesOthers, dropIgnoredEdits, decodeMask, vlanTag, vlanRisk,
+  S, EDITS, pwGate, provenance, applyOf, dependsUnmet, gatesOthers, dropIgnoredEdits, decodeMask, vlanTag, vlanRisk,
   CLASS_LABEL, CLASS_RANK, CLASS_MEANS, CLASS_CONFIRMS, costBadge, imageAware, settingOf, IDENTITY_SWITCH, identitySwitchOn,
 };

@@ -1434,6 +1434,11 @@ void serve(int conn)
 				put_fd(conn, "{\"ok\":true}");
 				return;
 			}
+			/* A key is root over ssh, for good, so adding one waits
+			 * until somebody has set a password. Removing stays
+			 * open: it gives no one access. */
+			if (refuse_unless_set(conn, 1))
+				return;
 			if (!form_get(body, "key", key, sizeof(key)) || !key[0] ||
 			    str_len(key) > 1000) {
 				respond(conn, "400 Bad Request", "application/json", 0);
@@ -2583,11 +2588,16 @@ void serve(int conn)
 	 * you cannot regenerate. It is served as a download rather than shown,
 	 * because a page you have to remember to copy out of is not a backup.
 	 *
-	 * It carries the identity keys in clear. That is the point of it, and
-	 * it is why it needs the same credential as everything else.
+	 * It carries the identity keys in clear. That is the point of it. Like
+	 * adding an SSH key it waits until somebody has set a password, and it
+	 * is refused while the credential file cannot be read.
 	 */
 	if (seq(path, "/api/backup")) {
-		long n = load_values(1);
+		long n;
+
+		if (refuse_unless_set(conn, 0))
+			return;
+		n = load_values(1);
 
 		/* A cut backup would be missing the hs store, the one part that
 		 * cannot be regenerated, while looking complete. */

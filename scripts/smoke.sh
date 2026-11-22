@@ -411,12 +411,21 @@ done
 check "a newline in the password is refused" 400 \
 	"$(code -u op:hunter22 -X POST -d 'user=op&password=one%0Atwo' "http://127.0.0.1:$PORT/api/password")"
 
-# Writing admin:admin into the file must NOT clear the warning: the question
-# the page answers is "is this stick on the credential everybody knows", and
-# a file containing the default is the worst of both.
-curl -s -u op:hunter22 -X POST -d 'user=admin&password=admin' "http://127.0.0.1:$PORT/api/password" >/dev/null
-check "a file holding the default still reports the default" true \
+# "Default" means that no credential was set: no file, or an empty one. A
+# file somebody wrote is theirs, admin:admin included, and the page, the
+# banner and every route that refuses the default ask the same check. With
+# no file, saving admin:admin is a save like any other: the file is written
+# (the same-credential skip compares with the file, and there is none) and
+# the default is no longer reported.
+rm -f /etc/config/confd.auth
+check "with no file, admin:admin can be saved" yes \
+	"$(err "$(curl -s -u admin:admin -X POST -d 'user=admin&password=admin' "http://127.0.0.1:$PORT/api/password")" '"ok":true')"
+check "  and is written to the file, 0600" "admin:admin 600" \
+	"$(cat /etc/config/confd.auth) $(stat -c '%a' /etc/config/confd.auth)"
+check "  and is not reported as the default" false \
 	"$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/firmware" | sed -n 's/.*"defaultauth":\([a-z]*\).*/\1/p')"
+check "  nor as saved on a safe-mode boot, which this is not" yes \
+	"$(err "$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/firmware")" '"authsaved":false')"
 mv /etc/config/confd.auth.kept /etc/config/confd.auth
 
 # The fallback. A stick flashed with an image that has never had a credential
@@ -548,6 +557,23 @@ rm -f $KF
 printf '%s\n' "$K1" > $KF
 check "without a credential the keys are not readable" 401 \
 	"$(code "http://127.0.0.1:$PORT/api/sshkeys")"
+# A key is root over ssh: the factory credential, which everybody knows, adds
+# none. Listing and removing stay open; neither gives anyone access.
+mv /etc/config/confd.auth /etc/config/confd.auth.kept
+check "adding a key is refused while the factory password is in force" 403 \
+	"$(code -u admin:admin -X POST --data-urlencode "key=$K2" "http://127.0.0.1:$PORT/api/sshkeys")"
+check "and the refusal says what to do" yes \
+	"$(err "$(curl -s -u admin:admin -X POST --data-urlencode "key=$K2" "http://127.0.0.1:$PORT/api/sshkeys")" 'Set a password under System, Access')"
+check "the file is unchanged" 1 "$(wc -l < $KF | tr -d ' ')"
+check "the keys are still listed with it" yes \
+	"$(err "$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/sshkeys")" '"keys":[{"i":0')"
+check "and one can still be removed" yes \
+	"$(err "$(curl -s -u admin:admin -X POST -d 'delete=0' --data-urlencode "line=$K1" "http://127.0.0.1:$PORT/api/sshkeys")" '"ok":true')"
+# admin:admin in a file was set by somebody: the key is added.
+printf 'admin:admin' > /etc/config/confd.auth
+check "with admin:admin saved in the file a key is added" yes \
+	"$(err "$(curl -s -u admin:admin -X POST --data-urlencode "key=$K2" "http://127.0.0.1:$PORT/api/sshkeys")" '"ok":true')"
+mv /etc/config/confd.auth.kept /etc/config/confd.auth
 rm -f /etc/config/dropbear.d/authorized_keys
 
 echo "== request framing"
@@ -628,6 +654,15 @@ C="Cookie: odi_session=$tok"
 check "the session opens the API" 200 "$(code -H "$C" "$L/api/schema")"
 check "  and the page" 200 "$(code -H "$C" -H "$HTML" "$L/")"
 check "  among other cookies" 200 "$(code -H "Cookie: a=b; odi_session=$tok; c=d" "$L/api/schema")"
+# A session outlives a credential file that stops reading: the routes that
+# refuse the default must not take "not the default" for a password set.
+mv /etc/config/confd.auth /etc/config/confd.auth.kept && mkdir /etc/config/confd.auth
+check "with the credential unreadable a session gets no backup" 503 "$(code -H "$C" "$L/api/backup")"
+check "  and adds no key" 503 \
+	"$(code -H "$C" -X POST -H "Origin: $L" --data-urlencode "key=$K2" "$L/api/sshkeys")"
+check "  and says why" yes \
+	"$(err "$(curl -s -H "$C" -X POST -H "Origin: $L" --data-urlencode "key=$K2" "$L/api/sshkeys")" 'password file cannot be read')"
+rmdir /etc/config/confd.auth && mv /etc/config/confd.auth.kept /etc/config/confd.auth
 check "a signed-in browser is sent on from /login" yes \
 	"$(err "$(curl -s -D - -o /dev/null -H "$C" "$L/login")" 'Location: /')"
 last=${tok: -1}
@@ -1062,6 +1097,18 @@ check "the backup is served as a download" yes \
 	"$(err "$(curl -si -u "$AUTH" "http://127.0.0.1:$PORT/api/backup")" 'Content-Disposition: attachment')"
 check "the backup needs the credential" 401 \
 	"$(code "http://127.0.0.1:$PORT/api/backup")"
+# It carries the identity keys in clear: not for the factory credential.
+mv /etc/config/confd.auth /etc/config/confd.auth.kept
+check "the backup is refused while the factory password is in force" 403 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/backup")"
+check "and that answer carries no identity key" none \
+	"$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/backup" | grep -c GPON_SN | sed 's/^0$/none/')"
+: > /etc/config/confd.auth
+check "  with an empty file as well" 403 "$(code -u admin:admin "http://127.0.0.1:$PORT/api/backup")"
+printf 'admin:admin' > /etc/config/confd.auth
+check "with admin:admin saved in the file the backup is served" 200 \
+	"$(code -u admin:admin "http://127.0.0.1:$PORT/api/backup")"
+mv /etc/config/confd.auth.kept /etc/config/confd.auth
 # A cs store of ~37 KB, more than the old 24 KB buffer: the hs store after it
 # was dropped without an error, so the identity keys read as empty.
 echo 450 > /etc/config/padcs
@@ -2218,6 +2265,11 @@ check "safe-mode boot: the saved credential is not" 401 \
 check "safe-mode boot: the page is told the default is in force" yes \
 	"$(err "$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/firmware")" '"defaultauth":true')"
 check "safe-mode boot: confd.auth is untouched" "$AUTH" "$(cat /etc/config/confd.auth)"
+# The page is the password form until a save (authsaved), and the routes
+# that refuse the default refuse for the whole boot, before and after it.
+check "safe-mode boot: nothing saved yet" yes \
+	"$(err "$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/firmware")" '"authsaved":false')"
+check "safe-mode boot: no backup" 403 "$(code -u admin:admin "http://127.0.0.1:$PORT/api/backup")"
 # The saved credential sent again is not written, though load_credential()
 # answers the default here; a new one is written, and in force from the next
 # boot only.
@@ -2225,6 +2277,11 @@ before=$(stat -c '%i' /etc/config/confd.auth)
 check "safe-mode boot: saving the stored credential answers ok" yes \
 	"$(err "$(curl -s -u admin:admin -X POST --data "user=${AUTH%%:*}&password=${AUTH#*:}" "http://127.0.0.1:$PORT/api/password")" '"ok":true')"
 check "safe-mode boot: and leaves the file as it was" "$before" "$(stat -c '%i' /etc/config/confd.auth)"
+check "safe-mode boot: that save opens the page" yes \
+	"$(err "$(curl -s -u admin:admin "http://127.0.0.1:$PORT/api/firmware")" '"defaultauth":true,"authsaved":true')"
+check "safe-mode boot: and the backup is still refused" 403 "$(code -u admin:admin "http://127.0.0.1:$PORT/api/backup")"
+check "safe-mode boot: and so is adding a key" 403 \
+	"$(code -u admin:admin -X POST --data-urlencode "key=$K2" "http://127.0.0.1:$PORT/api/sshkeys")"
 check "safe-mode boot: a new credential is saved" yes \
 	"$(err "$(curl -s -u admin:admin -X POST -d 'user=op&password=rescued1' "http://127.0.0.1:$PORT/api/password")" '"ok":true')"
 check "safe-mode boot: and admin:admin still works for this boot" 200 \

@@ -83,7 +83,8 @@ const paint = () => new Promise((r) => setTimeout(r, 30));
 async function saveBackup(password) {
   const r = await fetch('/api/backup', { cache: 'no-store' });
 
-  if (!r.ok) throw new Error('backup failed: HTTP ' + r.status);
+  /* A refusal says why in its body (the factory password, a failed dump). */
+  if (!r.ok) throw new Error((await r.text()).trim() || 'backup failed: HTTP ' + r.status);
   let bytes = new Uint8Array(await r.arrayBuffer());
 
   if (!bytes.length) throw new Error('the backup came back empty');

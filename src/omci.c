@@ -322,9 +322,9 @@ void emit_voip_json(int fd)
  * The same view with the SIP number, login and password in clear.
  *
  * Authentication has already happened (serve()), but the browser sends the
- * session cookie on its own, so the person must type the password again here. The
- * factory credential admin:admin is refused outright: a password everybody
- * knows protects nothing. A wrong password costs a second, like a failed login.
+ * session cookie on its own, so the person must type the password again here.
+ * Refused outright until somebody has set a password (refuse_unless_set()):
+ * the built-in one protects nothing. A wrong password costs a second, like a failed login.
  * Nothing here is logged, the password and the output are wiped after use, and
  * respond() already marks every answer no-store.
  */
@@ -334,12 +334,8 @@ void emit_voip_secrets_json(int fd, char *body)
 	char *argv[4];
 	int ok;
 
-	if (auth_is_default()) {
-		respond(fd, "403 Forbidden", "application/json", 0);
-		put_fd(fd, "{\"ok\":false,\"error\":\"refused: this stick still has the factory "
-			   "password. Set your own in Config first.\"}");
+	if (refuse_unless_set(fd, 1))
 		return;
-	}
 	if (!form_get(body, "password", pass, sizeof(pass))) {
 		wipe(body, slen(body));
 		wipe(pass, sizeof(pass));
@@ -420,12 +416,8 @@ void emit_voip_status_post(int fd, char *body)
 	unsigned long n = 0, i, k;
 	int s, p;
 
-	if (auth_is_default()) {
-		respond(fd, "403 Forbidden", "application/json", 0);
-		put_fd(fd, "{\"ok\":false,\"error\":\"refused: this stick still has the factory "
-			   "password. Set your own in Config first.\"}");
+	if (refuse_unless_set(fd, 1))
 		return;
-	}
 	if (!form_get(body, "port", port, sizeof(port)) || port[1] ||
 	    port[0] < '1' || port[0] > '0' + VOIP_PORTS_MAX) {
 		respond(fd, "400 Bad Request", "application/json", 0);

@@ -37,7 +37,6 @@
   </nav>
   <div class="top-end">
     <button id="setup-open" class="quiet" type="button" hidden>Setup</button>
-    <a class="authchip" id="authchip" href="#system/access" hidden>Default password</a>
     <button id="helptoggle" class="quiet helptoggle" type="button" aria-pressed="false" hidden title="Show the help for every field">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
       <span>Full help</span>
@@ -103,11 +102,6 @@
   <p id="netaddr-result-text"></p>
   <span id="netaddr-result-link"></span>
   <button id="netaddr-result-ok" type="button">Dismiss</button>
-</div>
-<div id="defaultauth" class="callout warn banner" hidden>
-  <p>This page answers to the built-in <code>admin</code> / <code>admin</code>.
-     Anyone who can reach it can change the line settings.</p>
-  <button id="gopassword" type="button">Set a password</button>
 </div>
 <main>
   <!-- ============================================================ Status -->
@@ -504,8 +498,12 @@
 
     <!-- Access -->
     <div class="sub" id="s-access" role="tabpanel" aria-labelledby="st-system-access" data-sub="access" hidden>
-      <section class="block">
+      <section class="block" id="pw-block">
         <h2>Sign-in for this page</h2>
+        <!-- Shown while the built-in admin / admin is in force: the page is
+             this block and nothing else until a password is saved (app.js). -->
+        <p id="pw-gate" class="callout warn" hidden>This stick has no password of its own yet and answers to
+           the built-in <code>admin</code> / <code>admin</code>. Set one to open the rest of the page.</p>
         <div class="formrow">
           <label>Username <input id="pw-user" autocomplete="username" value="admin" maxlength="64"></label>
           <label>New password <input id="pw-pass" type="password"
@@ -529,9 +527,12 @@
              auto-negotiation, and a setting that forced it off is cleared; this page accepts
              <code>admin</code> / <code>admin</code> and root over SSH accepts the password
              <code>admin</code>. The saved password and SSH keys are unchanged: they come back at the next boot.</p>
-          <p><strong>How to leave it.</strong> If you lost your password, set a new one here (or add an SSH key):
-             it is saved and takes effect from the next boot. Acknowledge the banner, then reboot. The next
-             boot uses the saved configuration again, with the fibre on.</p>
+          <p><strong>How to leave it.</strong> If you lost your password, set a new one here: it is saved and
+             takes effect from the next boot, and the rest of this page opens. For the whole boot this page
+             adds no SSH key and gives no backup, since it runs on the built-in password: add a key after
+             the reboot, or now over SSH as root with the password <code>admin</code>, and take the backup
+             after the reboot. Acknowledge the banner, then reboot. The next boot uses the saved
+             configuration again, with the fibre on.</p>
           <p><strong>How to enter it.</strong> Plug the stick in, wait about 80 seconds, pull it, wait a few
              seconds. Do that five times in a row (three times when the host port is set to 2500BASE-X or
              HiSGMII, or to auto-negotiation off), then plug it in and leave it in: that boot is the safe
@@ -560,6 +561,9 @@
                  placeholder="ssh-ed25519 AAAA… comment"></label>
           <button id="sshkey-add" type="button">Add key</button>
         </div>
+        <p id="sshkey-locked" class="callout warn" hidden>A key logs in as <code>root</code>, so this page adds
+           none while it answers to the built-in <code>admin</code> / <code>admin</code>. On a safe-mode boot
+           that is the whole boot: add the key after the reboot, or over SSH.</p>
         <details class="more">
           <summary>How keys are stored</summary>
           <p>One OpenSSH line each, as <code>ssh-keygen</code> prints them. They are
@@ -583,10 +587,14 @@
             <label>Password <input id="backup-pass" type="password" autocomplete="new-password"></label>
             <label>Again <input id="backup-pass2" type="password" autocomplete="new-password"></label>
           </div>
+          <p id="backup-locked" class="callout warn" hidden>No backup while this page answers to the built-in
+             <code>admin</code> / <code>admin</code>. On a safe-mode boot that is the whole boot: take the
+             backup after the reboot.</p>
           <p><button id="backup-go" type="button">Download encrypted backup</button>
              <a href="/api/backup" download id="backup-plain">Download without encryption</a></p>
           <p class="help">The password is not stored anywhere: without it the file cannot be read, here or
-             anywhere else. The plain file keeps every secret readable by anyone who gets it.</p>
+             anywhere else.<span id="backup-plain-help"> The plain file keeps every secret readable by anyone
+             who gets it.</span></p>
           <div id="backup-out"></div>
         </section>
 
@@ -656,6 +664,8 @@
              recipe every forum thread gives &mdash; takes all of it, and is why
              people end up with sticks that never get past O0.</p>
         </details>
+        <p id="reset-locked" class="callout warn" hidden><em>Back up, then reset</em> is off because the
+           backup is: the reset does not start without one. On a safe-mode boot, reset after the reboot.</p>
         <p><button id="reset-go" class="danger" type="button">Back up, then reset</button></p>
         <div id="reset-out"></div>
       </section>

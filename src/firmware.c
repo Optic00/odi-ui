@@ -577,6 +577,12 @@ void emit_firmware_body(int fd)
 	 * the fallback in confd.h defensible. */
 	put_fd(fd, ",\"defaultauth\":");
 	put_fd(fd, auth_is_default() ? "true" : "false");
+	/* With the default in force the page shows the password form and
+	 * nothing else, until a password is saved. On a safe-mode boot the
+	 * default stays in force after the save, so the page needs this too
+	 * (auth_saved() in http.c). */
+	put_fd(fd, ",\"authsaved\":");
+	put_fd(fd, auth_saved() ? "true" : "false");
 
 	/* The build manifest, as an object. Emitted from the file rather than
 	 * parsed into known fields: the build writes key=value lines, and a new

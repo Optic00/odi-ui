@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- The page has a level-one heading again (the device name in the header,
+  kept for screen readers where the narrow layout hides it), and the notices
+  above every view (errors and how an address trial ended) sit in a landmark
+  of their own. axe-core now reports nothing on the sign-in page and the
+  Status view, light and dark, desktop and phone. The page looks the same.
+
+- Style: the six dialog backdrops are one `dialog::backdrop` rule, the
+  white on blue buttons is the token `--on-blue`, and the save bar shadow
+  `--shadow`.
+
 - Access: a password change asks for the current password once one of the
   stick's own is set. `/api/password` takes it as `current` and answers 403,
   after a second, when it is missing or wrong; the form under System, Access

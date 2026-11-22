@@ -26,7 +26,7 @@
 -->
 <header class="top">
   <div class="brand">
-    <span class="device">ODI DFP-34X-2C2</span>
+    <h1 class="device">ODI DFP-34X-2C2</h1>
     <a class="linepill" id="linepill" href="#status" hidden></a>
   </div>
   <nav class="tabs" role="tablist" aria-label="Sections">
@@ -101,6 +101,8 @@
   </div>
 </header>
 
+<!-- The notices above every view, a landmark of their own. -->
+<section class="notices" aria-label="Notices">
 <p id="err" class="callout bad" role="alert" hidden></p>
 <!-- How an address trial ended (netaddr.js): the save bar is gone by then. -->
 <div id="netaddr-result" class="callout banner" role="status" hidden>
@@ -108,6 +110,7 @@
   <span id="netaddr-result-link"></span>
   <button id="netaddr-result-ok" type="button">Dismiss</button>
 </div>
+</section>
 <main>
   <!-- ============================================================ Status -->
   <section id="p-status" class="panel" role="tabpanel" aria-labelledby="tab-status">

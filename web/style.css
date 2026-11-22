@@ -47,6 +47,8 @@
   --blue-ink: #86B3F2;
   --red-ink: #F28B8B;
   --on-fill: #10161C;
+  --on-blue: #FFFFFF;  /* text on --blue-fill, both themes */
+  --shadow: rgba(0, 0, 0, 0.25);
 
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -121,7 +123,13 @@ p { margin: 0 0 10px; }
   position: sticky; top: 0; z-index: 20;
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 12px 0; min-width: 0; }
-.device { font-weight: 650; letter-spacing: 0.01em; white-space: nowrap; }
+.device { margin: 0; font-size: inherit; font-weight: 650; letter-spacing: 0.01em; white-space: nowrap; }
+/* Every modal dialog dims the page the same way. A literal: ::backdrop
+   inherits no custom property from :root in Chrome before 122 and Safari
+   before 17.4. */
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+/* No landmark to land on while every notice is hidden. */
+.notices:not(:has(> :not([hidden]))) { display: none; }
 .linepill {
   display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 8px;
   border: 1px solid var(--line-2); border-radius: 999px; font-size: 13px;
@@ -222,7 +230,6 @@ main { padding: 24px 24px 120px; }
   width: min(72ch, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 18px 20px;
   border-radius: var(--r); background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#update-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #update-dialog h2 { margin: 0 0 8px; font-size: 18px; }
 .update-rel { padding: 14px 0; border-top: 1px solid var(--line); }
 .update-rel h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 6px; font-size: 16px; }
@@ -238,7 +245,6 @@ main { padding: 24px 24px 120px; }
   max-width: 56ch; padding: 18px 20px; border-radius: var(--r);
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#hostlink-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #hostlink-count { color: var(--yellow-ink); font-variant-numeric: tabular-nums; }
 #hostlink-now > div, #hostlink-out > div, #hostlink-sd-out > div, #hostlink-dialog-out > div { margin: 6px 0; font-size: 14px; }
 /* The question before a change (dom.js ask), the same shape. */
@@ -246,7 +252,6 @@ main { padding: 24px 24px 120px; }
   max-width: 56ch; padding: 18px 20px; border-radius: var(--r);
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#ask-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .ask-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
 .ask-head h2 { margin: 0; font-size: 17px; }
 .ask-body { font-size: 14px; color: var(--ink-2); }
@@ -257,7 +262,6 @@ main { padding: 24px 24px 120px; }
   max-width: 56ch; padding: 18px 20px; border-radius: var(--r);
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#netaddr-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #netaddr-count { color: var(--yellow-ink); font-variant-numeric: tabular-nums; }
 #netaddr-dialog-out > div { margin: 6px 0; font-size: 14px; }
 #netaddr-link { word-break: break-all; }
@@ -266,7 +270,6 @@ main { padding: 24px 24px 120px; }
   width: min(56ch, calc(100vw - 32px)); padding: 18px 20px; border-radius: var(--r);
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#reboot-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 #reboot-dialog .progress { max-width: none; margin: 12px 0; }
 #reboot-fill { transition: width 1.8s linear; }
 #reboot-secs { color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -278,7 +281,6 @@ main { padding: 24px 24px 120px; }
   padding: 18px 20px; border-radius: var(--r);
   background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
 }
-#wizard::backdrop { background: rgba(0, 0, 0, 0.55); }
 .wiz-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .wiz-head p { margin: 0; }
 #wizard-title { margin: 4px 0 10px; outline: none; }
@@ -369,7 +371,7 @@ button, .button {
 }
 button:hover, .button:hover { border-color: var(--ink-3); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary { background: var(--blue-fill); border-color: var(--blue-fill); color: #fff; font-weight: 600; }
+button.primary { background: var(--blue-fill); border-color: var(--blue-fill); color: var(--on-blue); font-weight: 600; }
 button.primary:hover { background: color-mix(in srgb, var(--blue-fill) 88%, #000); }
 button.danger { color: var(--red-ink); border-color: color-mix(in srgb, var(--red) 70%, transparent); }
 button.danger:hover { background: color-mix(in srgb, var(--red) 12%, transparent); border-color: var(--red); }
@@ -448,7 +450,7 @@ button.apply .cost { padding: 1px 6px; }
 .subtabs [role=tab]:hover { color: var(--ink); }
 .subtabs [role=tab][aria-selected=true] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
 .pending {
-  font-size: 11.5px; font-weight: 700; color: #fff; background: var(--blue-fill);
+  font-size: 11.5px; font-weight: 700; color: var(--on-blue); background: var(--blue-fill);
   min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px; display: inline-grid; place-items: center;
 }
 
@@ -546,7 +548,7 @@ h3.sec { margin: 24px 0 0; padding-bottom: 6px; color: var(--ink-2); font-size: 
 .savebar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   background: var(--surface); border-top: 1px solid var(--line-2);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 -6px 24px var(--shadow);
 }
 .savebar-in { padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
 .savesum, #saveclasses { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -998,7 +1000,8 @@ button.mib-row:focus-visible { outline-offset: -2px; }
   .linepill .num { display: none; }
 }
 @media (max-width: 480px) {
-  .device { display: none; }
+  /* Out of sight, still the page heading for a screen reader. */
+  .brand .device { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 }
 input[type=file]::file-selector-button {
   font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
